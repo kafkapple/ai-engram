@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Engram PoC 대시보드 — 재현 + unlearning 평가 감사</title>
+<style>
+:root{--bg:#12141a;--card:#1c2029;--ink:#e8eaf0;--sub:#9aa3b2;--line:#2a2e38;--acc:#5fbf7f;--acc2:#7aa2ff;--warn:#fbbf24;--bad:#f87171}
+:root[data-theme="light"]{--bg:#f7f8fa;--card:#fff;--ink:#1a1d23;--sub:#5a6270;--line:#e3e6ea;--acc:#0f9d58;--acc2:#2563eb;--warn:#d97706;--bad:#dc2626}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo",Roboto,sans-serif}
+nav{position:sticky;top:0;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:10px 20px;display:flex;gap:16px;align-items:center;z-index:9}
+nav b{color:var(--acc)}nav a{color:var(--sub);text-decoration:none;font-size:.88rem}nav a:hover{color:var(--ink)}
+#tg{margin-left:auto;cursor:pointer;background:var(--card);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:4px 10px;font-size:.82rem}
+main{max-width:960px;margin:0 auto;padding:28px 20px}
+h1{font-size:1.4rem;margin:.2em 0}.sub{color:var(--sub)}
+.fact{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--acc);border-radius:10px;padding:14px 18px;margin:18px 0}
+.fact small{color:var(--acc);font-weight:700;letter-spacing:.04em}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin:16px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:13px 15px}
+.card h3{margin:0 0 .3em;font-size:.95rem}.n{font-size:1.25rem;font-weight:700;color:var(--acc2);font-variant-numeric:tabular-nums}
+table{border-collapse:collapse;width:100%;margin:.5em 0;font-size:.9rem}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left}th{color:var(--sub);font-weight:600}
+tr:hover td{background:color-mix(in srgb,var(--card) 60%,var(--bg))}
+a{color:var(--acc2)}.tag{display:inline-block;font-size:.7rem;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--sub)}
+.tag.main{border-color:var(--acc);color:var(--acc);font-weight:700}
+footer{color:var(--sub);font-size:.8rem;border-top:1px solid var(--line);margin-top:30px;padding:14px 0}
+</style>
+</head>
+<body>
+<nav><b>AI Engram PoC</b>
+<a href="index.html">대시보드</a>
+<a href="final_report_260711.html">감사 최종보고</a>
+<a href="report.html">재현 리포트</a>
+<button id="tg">☀︎ 라이트</button>
+</nav>
+<main>
+<h1>AI Engram — 재현 + Unlearning 평가 감사</h1>
+<div class="sub">Llama-3.2-{1B,3B} · TOFU · 2026-07-07 ~ 07-11 · 상태: <b>동결</b> (대기: 워크샵 write-up · 저자 협업 발송)</div>
+
+<div class="fact"><small>💡 RESEARCH FACT / SSOT</small><br>
+주의-경로(Q/K)를 깎는 closed-form unlearning은 "지워졌다는 착시"를 만든다 — prompt-계열 공격(ICL≤12샷+query-paraphrase)·utility 지표는 통과하지만, gradient 16문항에 미학습분까지 복귀하고(3세팅 방향 일관), 막을 소거 강도는 없으며(frontier), 강한 편집은 컨텍스트 능력까지 부순다. 강한 주장("정보 은닉잔존")은 <b>미확정</b> 종결.</div>
+
+<div class="grid">
+<div class="card"><h3>A1 · 해리 (gradient 축)</h3><span class="n">R 0.61 / 0.72 / 0.70</span><br><span class="sub">1B·f10 / 1B·f05 / 3B·f10 — novel·entity 이중통제, 3세팅 방향 일관</span></div>
+<div class="card"><h3>A2 · α frontier</h3><span class="n">공집합</span><br><span class="sub">utility-보존 ∩ 재학습-저항 — R≤0 전 지점 retain 3.1~9.0 붕괴</span></div>
+<div class="card"><h3>A3 · prompt 축 무신호</h3><span class="n">Δ −1.155 CI[−1.40,−0.91]</span><br><span class="sub">ch_C2 · cluster-CI — 대비: ROME/MEMIT 38% 누출</span></div>
+<div class="card"><h3>B1 · C3L 컨텍스트 붕괴</h3><span class="n">degen 32.5%</span><br><span class="sub">무관 12문답만으로, baseline 0% — 강한-편집(1B/f10) 한정</span></div>
+<div class="card"><h3>C1 · α 비이식성</h3><span class="n">+2.40 → +0.64</span><br><span class="sub">같은 α=1의 held-out 손상, 1B→3B — 저자 질문 카드</span></div>
+<div class="card"><h3>A0 · 재현 + 국소화</h3><span class="n">0.712 / 0.813</span><br><span class="sub">Overall(±0.014) · Q/K 단독 Δ+4.23, V/O 불활성 — §7 확증</span></div>
+</div>
+
+<h2 style="font-size:1.05rem">보고서 · 산출물</h2>
+<table>
+<tr><th>문서</th><th>내용</th><th>비고</th></tr>
+<tr><td><a href="final_report_260711.html">감사 최종보고</a> <span class="tag main">MAIN</span></td><td>3중 착시 스토리 · 전 실험 수치표 · 위협모델 · 리뷰 4R 타임라인 · 회고</td><td>Auditor 48/49 검증</td></tr>
+<tr><td><a href="report.html">재현 리포트</a></td><td>T0-T3 재현(TOFU·MNIST) 결과</td><td>aggregate_report.py 생성</td></tr>
+<tr><td><a href="ablation.png">ablation.png</a> · <a href="frontier.png">frontier.png</a> · <a href="mnist_classwise.png">mnist_classwise.png</a></td><td>국소화 · 억제↔파괴 frontier · MNIST 클래스삭제</td><td>figure</td></tr>
+<tr><td>JSON ×13 (동일 폴더)</td><td>전 실험 원자료 (relearn·novel/entity·α-sweep·sham·e2_icl/v2·c3_lenmatch·xval_f05/3b…)</td><td>gpu03 정본 미러</td></tr>
+</table>
+
+<h2 style="font-size:1.05rem">외부 정본 (단일 진입점 체계)</h2>
+<table>
+<tr><th>계층</th><th>위치</th></tr>
+<tr><td><b>단일 진입점</b> <span class="tag main">START HERE</span></td><td>Obsidian <code>30_Projects/2607_ICML_2026/260711_AI_Engram_milestone_suppression_audit.md</code> — 증거 등급표 + 전 산출물 링크</td></tr>
+<tr><td>상세 SSOT / 쉬운 해설</td><td><code>_Agent/AI_Engram/260707_AI_Engram_Findings_Draft.md</code> §4.5 / <code>260711_AI_Engram_explainer.md</code></td></tr>
+<tr><td>코드 + 원자료</td><td><code>github.com/kafkapple/ai-engram-repro</code> (private, <code>dcd4d31</code>) = 이 폴더</td></tr>
+<tr><td>재개 핸드오프 / 협업 초안</td><td><code>02_INBOX/Handoff/Research/AI_Engram/260711_Handoff_AI_Engram_Final.md</code> / <code>260711_AI_Engram_collab_outreach_draft.md</code></td></tr>
+</table>
+
+<footer>AI Engram PoC Dashboard · 생성 2026-07-11 · html-report 규약(다크 기본·토글·SSOT nav) · Engram Research</footer>
+</main>
+<script>
+const r=document.documentElement,b=document.getElementById('tg');
+const set=t=>{r.dataset.theme=t;localStorage.setItem('aiengram_theme',t);b.textContent=t==='light'?'🌙 다크':'☀︎ 라이트'};
+set(localStorage.getItem('aiengram_theme')||'dark');
+b.onclick=()=>set(r.dataset.theme==='light'?'dark':'light');
+</script>
+</body>
+</html>
