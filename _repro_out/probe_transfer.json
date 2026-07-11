@@ -1,0 +1,22 @@
+{
+  "probe": {
+    "base_cv": {
+      "mean": 0.998,
+      "std": 0.002
+    },
+    "edited_cv": {
+      "mean": 0.999,
+      "std": 0.001
+    },
+    "transfer": {
+      "mean": 0.995,
+      "std": 0.002
+    }
+  },
+  "chance": 0.5,
+  "act_norm": {
+    "base": 48.61,
+    "edited": 52.42,
+    "ratio": 1.078
+  }
+}

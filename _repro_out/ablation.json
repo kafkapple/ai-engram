@@ -1,0 +1,52 @@
+{
+  "base": {
+    "forget": 0.132,
+    "retain": 0.139
+  },
+  "alpha": 1.0,
+  "p": 1,
+  "rows": [
+    {
+      "group": "all-linear",
+      "n_layers": "all",
+      "forget_d": 2.052,
+      "retain_d": 0.462,
+      "selectivity": 4.44
+    },
+    {
+      "group": "attn_q+k",
+      "n_layers": 32,
+      "forget_d": 4.231,
+      "retain_d": 1.325,
+      "selectivity": 3.19
+    },
+    {
+      "group": "attn_v+o",
+      "n_layers": 32,
+      "forget_d": 0.029,
+      "retain_d": 0.005,
+      "selectivity": 5.4
+    },
+    {
+      "group": "mlp_gate",
+      "n_layers": 16,
+      "forget_d": 0.199,
+      "retain_d": 0.042,
+      "selectivity": 4.78
+    },
+    {
+      "group": "mlp_up+down",
+      "n_layers": 32,
+      "forget_d": 0.09,
+      "retain_d": 0.019,
+      "selectivity": 4.72
+    },
+    {
+      "group": "paper_qk+gate",
+      "n_layers": 48,
+      "forget_d": 1.931,
+      "retain_d": 0.464,
+      "selectivity": 4.16
+    }
+  ]
+}

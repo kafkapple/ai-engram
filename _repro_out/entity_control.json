@@ -1,0 +1,56 @@
+{
+  "S_O_original": 0.135,
+  "gold_ef_check": {
+    "relearn16_nll": 0.046,
+    "eval_nll_preattack": 2.549
+  },
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "eval_step_grid": [
+    0,
+    20,
+    40
+  ],
+  "runs": {
+    "edited": {
+      "mean": [
+        2.55,
+        0.933,
+        0.969
+      ],
+      "std": [
+        0.0,
+        0.012,
+        0.016
+      ]
+    },
+    "gold_ef": {
+      "mean": [
+        2.549,
+        2.599,
+        2.64
+      ],
+      "std": [
+        0.0,
+        0.03,
+        0.03
+      ]
+    },
+    "gold": {
+      "mean": [
+        2.797,
+        2.259,
+        2.332
+      ],
+      "std": [
+        0.0,
+        0.013,
+        0.014
+      ]
+    }
+  },
+  "verdict_gap_edited_vs_goldef": 1.671
+}
