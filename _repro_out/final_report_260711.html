@@ -94,12 +94,15 @@ Q/K만 편집 → forget Δ+4.23(전체 +2.05보다 강). V/O +0.03·MLP up/down
 <tr><td>E1 SHAM_SCR</td><td><code>gpu03_sham_scr.py</code></td><td><code>sham_scr.json</code></td><td class="warn">parity 실패(3.14×) → 무정보</td></tr>
 <tr><td>E2v2 (C0-C4)</td><td><code>gpu03_e2_v2.py</code></td><td><code>e2_v2.json</code></td><td>cluster-CI·생성 F1·per-item</td></tr>
 <tr><td>C3L 길이-매칭</td><td><code>gpu03_c3_lenmatch.py</code></td><td><code>c3_lenmatch.json</code></td><td class="ok">사전등록 PROMOTE</td></tr>
+<tr><td>교차검증 P1 (forget05)</td><td><code>gpu03_xval_forget05.py</code></td><td><code>xval_forget05.json</code></td><td class="warn">해리 방향 ✅(R=0.72) · 붕괴 ❌ — 얕은 편집(+0.65)</td></tr>
+<tr><td>교차검증 P2 (Llama-3.2-3B)</td><td><code>gpu03_xval_3b.py</code></td><td><code>xval_3b.json</code></td><td class="warn">동일 패턴(R=0.70·+0.64) — <b>α 비이식성</b> 관찰</td></tr>
 </table></div>
 <p class="sub">모델: <code>open-unlearning/tofu_Llama-3.2-1B-Instruct_{full,retain90}</code> · 편집: <code>engram/editor.py:apply</code>(adaptive α=1,p=1) · ckpt: gpu03 <code>/node_data/joon/checkpoints/ai_engram/</code> · 코드 정본: <code>~/dev/ai-engram-repro/</code></p>
 
 <h2>한계 · 남은 일</h2>
 <ul>
-<li><b>단일 모델(1B)·단일 split·TOFU 합성</b> — Deeb&amp;Roger: 합성 사실은 unlearning 신뢰도 과대평가 경향. 워크샵 스코프에서만 방어 가능.</li>
+<li><b>교차검증(260711 P1·P2)</b>: 해리 방향은 3세팅 유지(R 0.61/0.72/0.70), C3L 붕괴는 강한-편집(1B/f10) 한정 — 같은 α의 유효 강도가 세팅 간 ¼로 변동(α 비이식성). TOFU 합성 한계는 잔존 </li>
+<li style="display:none"> — Deeb&amp;Roger: 합성 사실은 unlearning 신뢰도 과대평가 경향. 워크샵 스코프에서만 방어 가능.</li>
 <li><b>C3L&lt;C3 역방향 미해명</b>(짧은 중립이 더 해로움 — 선택편향 의심, ~30분 규명) · <b>logit-lens 미실행</b>(해리의 whitebox 확인) — write-up 시 우선 제거.</li>
 <li>GOLD_EF seed 0 단일 · R값 CI 미산출 · relearn16 stride 결함(저자 4/9/14/19 누락) — 집필 시 재분석·caveat.</li>
 <li>강한 주장("은닉잔존")은 <b>미확정</b> — E1 sham은 parity 실패로 무정보, "기각" 아님(과신 표현은 260710 3R에서 철회).</li>
