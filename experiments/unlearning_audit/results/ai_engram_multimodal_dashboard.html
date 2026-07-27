@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Engram Audit — Evidence & Multimodal Roadmap</title>
+<style>
+:root{--bg:#f7f8fb;--card:#fff;--ink:#1d2433;--muted:#687386;--line:#dfe4ec;--blue:#315da8;--cyan:#147d8c;--green:#217a4b;--amber:#a76608;--red:#b73b45;--purple:#7251a6;--soft:#eef2f8;--shadow:0 4px 18px #25385812}
+@media(prefers-color-scheme:dark){:root{--bg:#101319;--card:#181d27;--ink:#e6eaf2;--muted:#99a5b8;--line:#2b3443;--blue:#82aef5;--cyan:#5bc6d5;--green:#66cf91;--amber:#f2b654;--red:#f17f88;--purple:#bb98ef;--soft:#202735;--shadow:0 5px 22px #0005}}
+[data-theme=light]{--bg:#f7f8fb;--card:#fff;--ink:#1d2433;--muted:#687386;--line:#dfe4ec;--blue:#315da8;--cyan:#147d8c;--green:#217a4b;--amber:#a76608;--red:#b73b45;--purple:#7251a6;--soft:#eef2f8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif}a{color:var(--blue);text-decoration:none}a:hover{text-decoration:underline}
+header{position:sticky;top:0;z-index:9;background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:12px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px}.brand{font-weight:800;color:var(--blue)}.nav{display:flex;gap:12px;align-items:center;font-size:.82rem}.theme{border:1px solid var(--line);background:var(--soft);color:var(--ink);border-radius:20px;padding:5px 10px;cursor:pointer}
+main{max-width:1240px;margin:auto;padding:24px 20px 60px}.hero{display:grid;grid-template-columns:1.45fr .8fr;gap:18px;margin-bottom:22px}.panel,.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}.panel{padding:22px}.eyebrow{color:var(--cyan);font-weight:800;font-size:.76rem;letter-spacing:.08em;text-transform:uppercase}.hero h1{font-size:clamp(1.55rem,4vw,2.5rem);line-height:1.15;margin:.35rem 0 .7rem}.lead{font-size:1.03rem;color:var(--muted);max-width:760px}.verdict{border-left:5px solid var(--amber);padding-left:14px;margin-top:18px}.verdict b{color:var(--amber)}
+.kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.kpi{background:var(--soft);border-radius:10px;padding:13px}.kpi .n{font-size:1.45rem;font-weight:850;font-variant-numeric:tabular-nums}.kpi small{color:var(--muted)}.ok{color:var(--green)}.warn{color:var(--amber)}.bad{color:var(--red)}.info{color:var(--blue)}
+h2{font-size:1.15rem;margin:30px 0 12px}.sub{color:var(--muted);font-size:.87rem}.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}.card{padding:16px}.span4{grid-column:span 4}.span5{grid-column:span 5}.span6{grid-column:span 6}.span7{grid-column:span 7}.span8{grid-column:span 8}.span12{grid-column:span 12}.card h3{margin:0 0 8px;font-size:.98rem}.tag{display:inline-block;border:1px solid var(--line);border-radius:99px;padding:2px 8px;font-size:.7rem;color:var(--muted);margin-left:4px}
+.barrow{display:grid;grid-template-columns:105px 1fr 52px;gap:9px;align-items:center;margin:8px 0;font-size:.8rem}.track{height:10px;border-radius:8px;background:var(--soft);overflow:hidden}.fill{height:100%;border-radius:8px;background:var(--blue)}.fill.green{background:var(--green)}.fill.red{background:var(--red)}.fill.amber{background:var(--amber)}.num{text-align:right;font-variant-numeric:tabular-nums}
+.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:.76rem;margin-top:10px}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:var(--blue)}.dot.g{background:var(--green)}.dot.r{background:var(--red)}.dot.a{background:var(--amber)}
+table{border-collapse:collapse;width:100%;font-size:.82rem}th,td{padding:8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--muted);font-weight:650;background:var(--soft)}.pill{display:inline-block;padding:2px 7px;border-radius:99px;font-size:.7rem;font-weight:750}.p-ok{background:color-mix(in srgb,var(--green) 14%,transparent);color:var(--green)}.p-warn{background:color-mix(in srgb,var(--amber) 14%,transparent);color:var(--amber)}.p-bad{background:color-mix(in srgb,var(--red) 14%,transparent);color:var(--red)}
+.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;align-items:stretch}.step{background:var(--soft);border-radius:10px;padding:12px;position:relative}.step:not(:last-child):after{content:"→";position:absolute;right:-9px;top:42%;z-index:2;color:var(--muted);font-weight:800}.step b{display:block;color:var(--purple);margin-bottom:5px}.step small{color:var(--muted)}
+.matrix{display:grid;grid-template-columns:115px repeat(4,1fr);gap:4px}.cell{padding:9px;border-radius:7px;background:var(--soft);font-size:.76rem}.head{font-weight:750;color:var(--muted)}.cell.active{outline:2px solid var(--cyan);background:color-mix(in srgb,var(--cyan) 10%,var(--soft))}.cell.next{outline:2px dashed var(--amber)}
+.road{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.phase{border-top:4px solid var(--blue);background:var(--soft);padding:12px;border-radius:8px}.phase:nth-child(2){border-color:var(--cyan)}.phase:nth-child(3){border-color:var(--purple)}.phase:nth-child(4){border-color:var(--green)}.phase b{display:block;margin-bottom:6px}.phase ul{padding-left:16px;margin:0;color:var(--muted);font-size:.78rem}
+.callout{border:1px solid var(--amber);background:color-mix(in srgb,var(--amber) 8%,var(--card));border-radius:10px;padding:13px}.links{display:flex;gap:10px;flex-wrap:wrap}.btn{display:inline-block;border:1px solid var(--line);border-radius:7px;padding:7px 10px;background:var(--soft);font-size:.78rem}footer{max-width:1240px;margin:auto;padding:0 20px 30px;color:var(--muted);font-size:.75rem}
+@media(max-width:850px){.hero{grid-template-columns:1fr}.span4,.span5,.span6,.span7,.span8{grid-column:span 12}.flow,.road{grid-template-columns:1fr}.step:not(:last-child):after{content:"↓";right:50%;top:auto;bottom:-15px}.matrix{grid-template-columns:90px repeat(4,minmax(92px,1fr));overflow-x:auto}.kpis{grid-template-columns:repeat(2,1fr)}}@media print{header,.theme{display:none}body{background:#fff}.panel,.card{box-shadow:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">🧠 AI Engram Audit · Evidence Dashboard</div>
+  <nav class="nav">
+    <a href="../HTML_Reports_Index.html">Master Index</a>
+    <a href="../PoC_Dashboard.html">Research Hub</a>
+    <button class="theme" onclick="toggleTheme()">◐ Theme</button>
+  </nav>
+</header>
+<main>
+<section class="hero">
+  <div class="panel">
+    <div class="eyebrow">TOFU · Llama-3.2 1B/3B · closed-form unlearning</div>
+    <h1>AI Engram: 지워짐의 증거와<br>멀티모달 확장 로드맵</h1>
+    <p class="lead">정적 forgetting, 재학습 가역성, prompt 추출, 컨텍스트 손상과 교차검증을 한 화면에 통합한다. 다음 단계는 동일한 인과 질문을 텍스트에서 이미지·오디오·비디오의 modality-specific trace로 확장하는 것이다.</p>
+    <div class="verdict"><b>현재 방어 가능한 결론</b><br>정적 forgetting은 내부 erasure의 충분한 증거가 아니다. 행동적 suppression 흔적은 강하지만, 직접 prompt extraction과 context-collapse는 일관되게 재현되지 않았다.</div>
+  </div>
+  <div class="panel kpis">
+    <div class="kpi"><div class="n info">0.995</div><small>base→edited probe transfer</small></div>
+    <div class="kpi"><div class="n ok">0.61</div><small>forget-specific recovery R</small></div>
+    <div class="kpi"><div class="n warn">+0.985</div><small>C3L context damage</small></div>
+    <div class="kpi"><div class="n bad">0 / 2</div><small>full cross-setting replication</small></div>
+  </div>
+</section>
+
+<h2>1. 핵심 증거 지도 <span class="sub">지지·반증·한계를 동시에 표시</span></h2>
+<section class="grid">
+  <article class="card span4"><h3>표상 지속 <span class="tag">probe_transfer</span></h3>
+    <div class="barrow"><span>Base CV</span><div class="track"><div class="fill" style="width:99.8%"></div></div><span class="num">.998</span></div>
+    <div class="barrow"><span>Edited CV</span><div class="track"><div class="fill green" style="width:99.9%"></div></div><span class="num">.999</span></div>
+    <div class="barrow"><span>Transfer</span><div class="track"><div class="fill amber" style="width:99.5%"></div></div><span class="num">.995</span></div>
+    <p class="sub">편집 후에도 동일 선형 concept direction이 거의 보존된다. activation norm ratio 1.078.</p>
+  </article>
+  <article class="card span4"><h3>재학습 해리 <span class="tag">entity control</span></h3>
+    <div class="barrow"><span>Edited</span><div class="track"><div class="fill green" style="width:36%"></div></div><span class="num">0.969</span></div>
+    <div class="barrow"><span>GOLD_EF</span><div class="track"><div class="fill red" style="width:98%"></div></div><span class="num">2.640</span></div>
+    <div class="barrow"><span>GOLD</span><div class="track"><div class="fill amber" style="width:86%"></div></div><span class="num">2.332</span></div>
+    <p class="sub">entity familiarity를 통제해도 edited만 빠르게 회복. gap=1.671.</p>
+  </article>
+  <article class="card span4"><h3>추출 관문 <span class="tag">E2 confirmatory</span></h3>
+    <div class="barrow"><span>C2 shots</span><div class="track"><div class="fill red" style="width:82%"></div></div><span class="num">−1.155</span></div>
+    <div class="barrow"><span>C4 rephrase</span><div class="track"><div class="fill red" style="width:39%"></div></div><span class="num">−0.389</span></div>
+    <p class="sub">두 CI 모두 0 아래. confound-controlled prompt extraction 증거는 없음.</p>
+    <div class="legend"><span><i class="dot g"></i>suppression 지지</span><span><i class="dot r"></i>강한 주장 반증</span></div>
+  </article>
+
+  <article class="card span7"><h3>α frontier: 가역성에서 utility 붕괴로</h3>
+    <svg viewBox="0 0 620 230" width="100%" role="img" aria-label="alpha frontier scatter">
+      <line x1="55" y1="190" x2="590" y2="190" stroke="var(--line)"/><line x1="55" y1="25" x2="55" y2="190" stroke="var(--line)"/>
+      <text x="300" y="220" fill="var(--muted)" font-size="12">retain NLL → utility damage</text><text x="15" y="115" fill="var(--muted)" font-size="12" transform="rotate(-90 15 115)">recovery R</text>
+      <rect x="55" y="25" width="155" height="165" fill="var(--green)" opacity=".06"/><text x="70" y="44" fill="var(--green)" font-size="11">usable + relearnable</text>
+      <circle cx="65" cy="56" r="7" fill="var(--cyan)"/><text x="74" y="57" fill="var(--ink)" font-size="10">adaptive .5</text>
+      <circle cx="82" cy="77" r="7" fill="var(--blue)"/><text x="91" y="78" fill="var(--ink)" font-size="10">plain .5</text>
+      <circle cx="90" cy="68" r="9" fill="var(--amber)"/><text x="100" y="68" fill="var(--ink)" font-size="10">adaptive 1.0</text>
+      <circle cx="245" cy="154" r="8" fill="var(--red)"/><text x="255" y="154" fill="var(--ink)" font-size="10">plain 1.0</text>
+      <circle cx="350" cy="135" r="8" fill="var(--red)"/><text x="360" y="135" fill="var(--ink)" font-size="10">adaptive 2.0</text>
+      <circle cx="560" cy="178" r="8" fill="var(--red)"/><text x="477" y="177" fill="var(--ink)" font-size="10">plain 2.0</text>
+    </svg>
+    <p class="sub">utility 보존 동작점은 모두 relearnable. recovery 저항은 clean erasure가 아니라 retain 붕괴와 함께 나타난다.</p>
+  </article>
+  <article class="card span5"><h3>교차검증 판정</h3>
+    <table><thead><tr><th>설정</th><th>R1 해리</th><th>R2 context</th><th>전체</th></tr></thead><tbody>
+      <tr><td>1B · forget10</td><td><span class="pill p-ok">R=.609</span></td><td><span class="pill p-ok">C3L+</span></td><td><span class="pill p-ok">기준</span></td></tr>
+      <tr><td>1B · forget05</td><td><span class="pill p-ok">R=.718</span></td><td><span class="pill p-bad">실패</span></td><td><span class="pill p-warn">부분</span></td></tr>
+      <tr><td>3B · forget10</td><td><span class="pill p-ok">R=.700</span></td><td><span class="pill p-bad">실패</span></td><td><span class="pill p-warn">부분</span></td></tr>
+    </tbody></table>
+    <div class="callout" style="margin-top:12px"><b>핵심 confound</b>: 동일 α의 held-out edit damage가 설정에 따라 약 4× 달라진다. 다음 실험은 α가 아니라 효과량을 매칭해야 한다.</div>
+  </article>
+</section>
+
+<h2>2. 현재 결론의 경계</h2>
+<section class="grid">
+  <article class="card span6"><h3>확실히 말할 수 있음</h3><ul>
+    <li>공개 구현의 TOFU forgetting과 Q/K 국소화는 재현됨.</li>
+    <li>편집 모델은 never-knew gold보다 held-out 사실을 빠르게 재학습.</li>
+    <li>linear concept direction은 편집 후에도 강하게 transfer.</li>
+    <li>1B/forget10 강한 편집에서 무관 context 처리 손상이 관찰됨.</li>
+  </ul></article>
+  <article class="card span6"><h3>아직 말할 수 없음</h3><ul>
+    <li>남은 표상이 prompt만으로 직접 추출된다는 주장.</li>
+    <li>context-collapse가 split/model scale을 넘어 일반적이라는 주장.</li>
+    <li>SHAM이 real edit와 동등한 substrate perturbation이라는 주장(현재 norm 3.14×).</li>
+    <li>TOFU 밖 실제 데이터와 다른 architecture에서 같은 기전이라는 주장.</li>
+  </ul></article>
+</section>
+
+<h2>3. 멀티모달 확장: 공통 질문과 modality별 관측량</h2>
+<section class="card">
+  <div class="flow">
+    <div class="step"><b>① Concept 정의</b><small>인물·객체·화자·행동·사건을 paired positive/negative set으로 구성</small></div>
+    <div class="step"><b>② Trace 수집</b><small>text token, image patch, audio frame, video tube의 masked covariance</small></div>
+    <div class="step"><b>③ Closed-form edit</b><small>단일 modality와 cross-modal projector/attention을 분리 편집</small></div>
+    <div class="step"><b>④ Attack battery</b><small>relearning, rephrasing, modality substitution, cross-modal cueing</small></div>
+    <div class="step"><b>⑤ Causal 판정</b><small>static forgetting·utility·transfer·recovery·context damage를 동시 평가</small></div>
+  </div>
+</section>
+
+<section class="grid" style="margin-top:14px">
+  <article class="card span12"><h3>실험 매트릭스 <span class="tag">현재 → 다음</span></h3>
+    <div class="matrix">
+      <div class="cell head">축</div><div class="cell head">Text</div><div class="cell head">Image</div><div class="cell head">Audio</div><div class="cell head">Video</div>
+      <div class="cell head">Trace unit</div><div class="cell active">answer token</div><div class="cell next">patch / region</div><div class="cell next">frame / phoneme</div><div class="cell next">tube / event</div>
+      <div class="cell head">Forget task</div><div class="cell active">TOFU author facts</div><div class="cell next">identity/object attribute</div><div class="cell next">speaker/content</div><div class="cell next">person-action event</div>
+      <div class="cell head">Recovery</div><div class="cell active">16-QA FT</div><div class="cell next">few-shot image FT</div><div class="cell next">few-utterance FT</div><div class="cell next">few-clip FT</div>
+      <div class="cell head">Cross cue</div><div class="cell active">rephrase/ICL</div><div class="cell next">caption→image</div><div class="cell next">text→voice</div><div class="cell next">frame/audio→event</div>
+      <div class="cell head">Utility</div><div class="cell active">retain NLL</div><div class="cell next">classification/VQA</div><div class="cell next">ASR/speaker</div><div class="cell next">temporal QA/action</div>
+    </div>
+  </article>
+</section>
+
+<h2>4. 단계별 실행 계획</h2>
+<section class="road">
+  <div class="phase"><b>P0 · 텍스트 인과 정리</b><ul><li>효과량 매칭 1B/3B/f05</li><li>author-balanced relearn</li><li>multi-seed GOLD_EF</li></ul></div>
+  <div class="phase"><b>P1 · Image 최소 PoC</b><ul><li>CLIP/ViT patch covariance</li><li>identity vs attribute 분리</li><li>caption↔image cross-cue</li></ul></div>
+  <div class="phase"><b>P2 · Audio 분해</b><ul><li>speaker와 linguistic content 분리</li><li>frame/phoneme mask</li><li>voice cloning recovery attack</li></ul></div>
+  <div class="phase"><b>P3 · Video 통합</b><ul><li>시간축 covariance</li><li>person/action/event factorization</li><li>audio-visual modality substitution</li></ul></div>
+</section>
+
+<h2>5. 우선순위와 성공 기준</h2>
+<section class="grid">
+  <article class="card span8"><table><thead><tr><th>#</th><th>실험</th><th>성공 기준</th><th>이유</th></tr></thead><tbody>
+    <tr><td>1</td><td>효과량 매칭 교차검증</td><td>static forget/retain damage matched 후 R1/R2 판정</td><td>현재 최대 confound 제거</td></tr>
+    <tr><td>2</td><td>parity-matched SHAM</td><td>layer profile corr↑, global norm ratio 0.9–1.1</td><td>edit-hole 인과 통제</td></tr>
+    <tr><td>3</td><td>Image identity PoC</td><td>region trace·cross-cue·relearning을 모두 측정</td><td>가장 작은 멀티모달 일반화</td></tr>
+    <tr><td>4</td><td>Audio/Video factorization</td><td>content와 identity/action의 선택적 편집</td><td>modality entanglement 검증</td></tr>
+  </tbody></table></article>
+  <article class="card span4"><h3>Go / No-Go</h3>
+    <p><span class="pill p-ok">GO</span> 효과량 매칭에서도 recovery 해리가 유지되면 image PoC로 확장.</p>
+    <p><span class="pill p-warn">HOLD</span> SHAM parity가 맞지 않으면 hidden-trace 인과 주장은 보류.</p>
+    <p><span class="pill p-bad">STOP</span> modality utility collapse 없이 선택적 forgetting이 불가능하면 editor 확장 대신 benchmark 기여로 전환.</p>
+  </article>
+</section>
+
+<h2>6. 재현 자산</h2>
+<section class="card links">
+  <a class="btn" href="file:///Users/joon/dev/ai-engram/examples/ai_engram_tofu_unlearning_audit.ipynb">📓 실행형 Notebook</a>
+  <a class="btn" href="file:///Users/joon/dev/ai-engram/experiments/unlearning_audit/README.md">🧪 Experiment README</a>
+  <a class="btn" href="file:///Users/joon/dev/ai-engram/experiments/unlearning_audit/results/final_report_260711.html">📄 기존 최종 보고</a>
+  <a class="btn" href="file:///Users/joon/Obsidian/30_Projects/_Hold/2607_AI_Engram_Audit/260711_AI_Engram_milestone_suppression_audit.md">🗂️ Milestone Note</a>
+</section>
+</main>
+<footer>Updated 2026-07-27 · Source of truth: kafkapple/ai-engram @ 52e6065 · 수치는 저장된 JSON 결과 기반이며 새 실험 결과를 생성하지 않음.</footer>
+<script>
+function toggleTheme(){const root=document.documentElement;root.dataset.theme=root.dataset.theme==='light'?'':'light';try{localStorage.setItem('ai-engram-theme',root.dataset.theme)}catch(e){}}
+try{document.documentElement.dataset.theme=localStorage.getItem('ai-engram-theme')||''}catch(e){}
+</script>
+</body>
+</html>

@@ -27,6 +27,8 @@ stored in the separate `ai-engram-repro` repository and as untracked
   versioned.
 - [`../../examples/ai_engram_tofu_unlearning_audit.ipynb`](../../examples/ai_engram_tofu_unlearning_audit.ipynb):
   theory-first, step-by-step executable walkthrough.
+- [`results/ai_engram_multimodal_dashboard.html`](results/ai_engram_multimodal_dashboard.html):
+  evidence visualizations, limitations, priorities, and multimodal roadmap.
 
 Install and run from the repository root:
 
