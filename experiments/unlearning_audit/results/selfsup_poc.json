@@ -1,0 +1,25 @@
+{
+  "base": {
+    "forget_nll": 0.132,
+    "retain_nll": 0.139,
+    "probe_acc": 0.725
+  },
+  "auto_split": {
+    "jaccard_vs_labeled": 0.1,
+    "k": 400
+  },
+  "labeled": {
+    "forget_nll": 2.183,
+    "forget_d": 2.051,
+    "retain_nll": 0.591,
+    "retain_d": 0.452,
+    "probe_acc": 0.847
+  },
+  "label_light": {
+    "forget_nll": 0.61,
+    "forget_d": 0.478,
+    "retain_nll": 0.529,
+    "retain_d": 0.39,
+    "probe_acc": 0.767
+  }
+}

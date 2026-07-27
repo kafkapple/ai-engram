@@ -3,6 +3,12 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Local experiment artifacts
+experiments/unlearning_audit/checkpoints/
+experiments/unlearning_audit/results/*.log
+experiments/unlearning_audit/results/*.pt
+experiments/unlearning_audit/results/*.ipynb
+
 # C extensions
 *.so
 

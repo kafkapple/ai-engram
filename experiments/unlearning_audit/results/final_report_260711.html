@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Engram 감사 최종 보고 — unlearning 평가의 3중 착시 (260711)</title>
+<style>
+:root{--bg:#f7f8fa;--card:#fff;--ink:#1a1d23;--sub:#5a6270;--line:#e3e6ea;--acc:#2563eb;--ok:#0f9d58;--warn:#d97706;--bad:#dc2626;--dim:#8b93a1;--bar:#c7d6f5}
+@media(prefers-color-scheme:dark){:root{--bg:#12141a;--card:#1b1e26;--ink:#e8eaf0;--sub:#9aa3b2;--line:#2a2e38;--acc:#7aa2ff;--ok:#4ade80;--warn:#fbbf24;--bad:#f87171;--dim:#6b7280;--bar:#2f4470}}
+*{box-sizing:border-box}body{margin:0;padding:32px 20px;background:var(--bg);color:var(--ink);font:15px/1.65 -apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;max-width:980px;margin-inline:auto}
+h1{font-size:1.5rem;margin:.2em 0}h2{font-size:1.12rem;margin:2em 0 .6em;border-bottom:2px solid var(--line);padding-bottom:.3em}
+.sub{color:var(--sub)}.banner{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--acc);border-radius:10px;padding:16px 20px;margin:18px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin:14px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.card h3{margin:.1em 0 .4em;font-size:1rem}.tag{display:inline-block;font-size:.72rem;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--sub);margin-left:6px;vertical-align:middle}
+.num{font-variant-numeric:tabular-nums}
+table{border-collapse:collapse;width:100%;margin:.6em 0;font-size:.9rem}
+.tw{overflow-x:auto}th,td{border:1px solid var(--line);padding:6px 9px;text-align:right}th:first-child,td:first-child{text-align:left}
+th{background:color-mix(in srgb,var(--card) 70%,var(--bg))}
+.ok{color:var(--ok);font-weight:600}.bad{color:var(--bad);font-weight:600}.warn{color:var(--warn);font-weight:600}.dim{color:var(--dim)}
+.bar{display:inline-block;height:10px;background:var(--bar);border-radius:3px;vertical-align:middle;margin-right:6px}
+.bad .bar,.barbad{background:color-mix(in srgb,var(--bad) 45%,var(--bar))}
+footer{margin-top:36px;color:var(--dim);font-size:.8rem;border-top:1px solid var(--line);padding-top:12px}
+code{background:color-mix(in srgb,var(--card) 60%,var(--bg));padding:1px 5px;border-radius:4px;font-size:.85em}
+a{color:var(--acc)}
+</style>
+</head>
+<body>
+<p style="margin:0 0 10px;padding:7px 12px;border:1px solid var(--line);border-radius:8px;font-size:.85rem"><a href="index.html">⬅ PoC 대시보드</a> · <a href="report.html">재현 리포트</a></p>
+<h1>AI Engram 감사 최종 보고</h1>
+<div class="sub">재현 → suppression-vs-erasure 검증 → 평가 감사 · 2026-07-07 ~ 07-11 · Llama-3.2-1B / TOFU forget10 · gpu03</div>
+
+<div class="banner"><b>TL;DR — 주의-경로(Q/K)를 깎는 closed-form unlearning은 "지워졌다는 착시"를 3겹으로 만든다.</b><br>
+① 프롬프트-계열 공격 통과 <span class="sub">(검증 범위: ICL≤12샷+query-paraphrase — GCG/jailbreak 미검증)</span> ② 표준 utility 지표 통과(retain-NLL 0.58) — 그러나 ③ 16문항 재학습에 미학습분까지 복귀(R≈0.61), 컨텍스트 활용 능력 은닉 붕괴(degen 32.5%), 편집 강도를 올려도 소거 대신 파괴만 얻음(frontier). <b>원논문 forgetting 주장은 API-only 위협모델에서만 성립.</b> 목표였던 강한 주장("정보 은닉잔존")은 <b>미확정(burden not met)</b>으로 정직 종결.</div>
+
+<h2>발견 3 + 기전 1</h2>
+<div class="grid">
+<div class="card"><h3>🌟 ① α frontier<span class="tag">alpha_sweep.json · 2seed</span></h3>
+"깨끗한 소거 다이얼 위치는 없다" — utility 보존 지점(retain≤0.58)은 전부 재학습-가역(R&gt;0), 재학습-저항(R≤0)은 전부 retain 3.1~9.0 붕괴(lobotomy). "α가 약했다" 반론을 정량으로 차단.</div>
+<div class="card"><h3>🔨 ② 해리(dissociation)<span class="tag">novel/entity_control + e2_v2.json</span></h3>
+같은 모델·같은 160문항: gradient 문은 열림(R≈0.61, novel/entity 이중통제) ↔ prompt 문은 닫힘(confirmatory 2채널 CI가 0 배제). 대비: MLP-삽입형 ROME/MEMIT는 프롬프트로 38% 샘(Patil'23) — <b>수술 부위가 누출 경로를 결정</b>.</div>
+<div class="card"><h3>🔨 ③ C3L 컨텍스트 손상<span class="tag">c3_lenmatch.json · 사전등록 PROMOTE</span></h3>
+길이-매칭(24.3 vs 24.1 단어) <b>무관</b> 컨텍스트만으로 편집 모델만 붕괴: Δ(C3L−C1)=+0.985 CI[0.84,1.14], 출력 붕괴 32.5%(baseline 0%). 표준 utility 지표의 사각지대 실증. 선행(2510.17620)은 forget-재제시 축만 — 무관-컨텍스트 축은 미보고.</div>
+<div class="card"><h3>🧭 기전: Q/K 국소화<span class="tag">ablation.json · 원논문 §7 재확인(novelty 아님)</span></h3>
+Q/K만 편집 → forget Δ+4.23(전체 +2.05보다 강). V/O +0.03·MLP up/down +0.09 = 무반응. <b>내용이 아니라 경로를 끊는 편집</b> — ①②③을 한 문장으로 묶는 접착제.</div>
+</div>
+
+<h2>① frontier — 억제↔파괴 (6 동작점)</h2>
+<div class="tw"><table>
+<tr><th>scale·α</th><th>static forget</th><th>retain (base 0.13)</th><th>recovery R</th><th>판정</th></tr>
+<tr><td>adaptive 0.5</td><td class="num">0.38</td><td class="num ok">0.18</td><td class="num"><span class="bar" style="width:75px"></span>0.75</td><td>약한 억제, 가역</td></tr>
+<tr><td>plain 0.5</td><td class="num">1.44</td><td class="num ok">0.45</td><td class="num"><span class="bar" style="width:49px"></span>0.49</td><td>약한 forgetting(&lt;gold), 가역</td></tr>
+<tr><td><b>adaptive 1.0</b></td><td class="num">2.30</td><td class="num ok">0.58</td><td class="num"><span class="bar" style="width:61px"></span>0.61</td><td><b>논문 동작점 = 억제, 가역</b></td></tr>
+<tr><td>adaptive 2.0</td><td class="num">6.52</td><td class="num bad">5.01</td><td class="num">−0.13</td><td class="bad">파괴</td></tr>
+<tr><td>plain 1.0</td><td class="num">5.74</td><td class="num bad">3.15</td><td class="num">−0.51</td><td class="bad">파괴</td></tr>
+<tr><td>plain 2.0</td><td class="num">9.98</td><td class="num bad">8.95</td><td class="num">−2.68</td><td class="bad">파괴</td></tr>
+</table></div>
+
+<h2>② 해리 — 두 개의 문</h2>
+<div class="tw"><table>
+<tr><th>공격</th><th>EDITED</th><th>대조</th><th>판정</th></tr>
+<tr><td>재학습 16QA → held-out 회복</td><td class="num">final 0.97~0.99 (R≈0.61)</td><td class="num">GOLD 2.33 못 회복 · GOLD_EF 2.64 · novel 5.28 못 배움</td><td class="bad">문 열림 (흔적 특이적)</td></tr>
+<tr><td>paraphrase-shot 12개 (ch_C2)</td><td class="num">gain −0.816</td><td class="num">GOLD_EF +0.339</td><td class="ok">무신호 Δ=−1.155 CI[−1.40,−0.91]</td></tr>
+<tr><td>query-paraphrase 공격 (ch_C4)</td><td class="num">gain −0.534</td><td class="num">GOLD_EF −0.145</td><td class="ok">무신호 Δ=−0.389 CI[−0.48,−0.30]</td></tr>
+<tr><td class="dim">참고: ROME/MEMIT (Patil'23)</td><td class="dim" colspan="2">logit-lens·rephrase로 38% 복원</td><td class="dim">같은 closed-form family인데 샘</td></tr>
+</table></div>
+
+<h2>③ C3L — 표준 지표가 못 보는 붕괴</h2>
+<div class="tw"><table>
+<tr><th>조건 (모두 answer NLL)</th><th>EDITED</th><th>GOLD_EF</th><th>GOLD</th></tr>
+<tr><td>C0 (컨텍스트 없음)</td><td class="num">2.538</td><td class="num">2.551</td><td class="num">2.796</td></tr>
+<tr><td>C1 forget-shot 12</td><td class="num warn">3.040</td><td class="num ok">2.297</td><td class="num ok">2.065</td></tr>
+<tr><td>C2 paraphrase-shot 12</td><td class="num warn">3.354</td><td class="num ok">2.212</td><td class="num ok">2.104</td></tr>
+<tr><td>C3 중립-shot 12 (30.8단어)</td><td class="num bad">3.829 · degen 21%</td><td class="num">2.458 · 0%</td><td class="num">2.598 · 0%</td></tr>
+<tr><td><b>C3L 중립-shot 길이매칭 (24.3단어)</b></td><td class="num bad"><b>4.025 · degen 32.5%</b></td><td class="num ok">2.510 · 0%</td><td class="dim">—</td></tr>
+<tr><td>C4 query-paraphrase (k=0)</td><td class="num warn">3.072</td><td class="num">2.696</td><td class="num">2.918</td></tr>
+</table></div>
+<p class="sub">읽는 법: 비교군 두 모델은 어떤 컨텍스트든 이득(NLL↓ 초록). 편집 모델만 모든 컨텍스트에서 손해(주황/빨강) — 심지어 지운 것과 무관한 예시(C3/C3L)에서 최악. 길이·내용 교란은 사전등록 게이트로 기각.</p>
+
+<h2>위협모델 3층 판정 — "원논문 forgetting 주장은 사실인가"</h2>
+<div class="tw"><table>
+<tr><th>층위</th><th>판정</th><th>근거</th></tr>
+<tr><td>(a) 행동/배포 수준 (API-only 공격자)</td><td class="ok">성립 — 오히려 방어 증거 추가</td><td>재현 확인 + prompt-계열 전 채널 무신호(타 editor는 새는데)</td></tr>
+<tr><td>(b) 구조적 소거 (DA/NMI 주장)</td><td class="bad">불성립</td><td>16문항 재학습로 미학습분 복귀(R≈0.61, gold 불가) + frontier상 강화=파괴</td></tr>
+<tr><td>(c) 숨은 비용</td><td class="warn">지표 사각</td><td>retain-NLL 0.58 "합격"(alpha_sweep 기준; sham_scr 독립런 0.594)인데 C3L degen 32.5%</td></tr>
+</table></div>
+
+<h2>실험 원장 (재현 포인터)</h2>
+<div class="tw"><table>
+<tr><th>실험</th><th>스크립트</th><th>로그(JSON)</th><th>비고</th></tr>
+<tr><td>재현 T0-T3 + ablation</td><td><code>setup_and_repro.sh</code>·<code>ablation_targets.py</code></td><td><code>ablation.json</code> 외</td><td><a href="report.html">재현 대시보드 ↗</a></td></tr>
+<tr><td>relearning + novel/entity 통제</td><td><code>{relearn_attack,novel_control,entity_control}.py</code></td><td><code>relearn_attack/novel_control/entity_control.json</code></td><td>3seed</td></tr>
+<tr><td>α frontier</td><td><code>alpha_sweep.py</code></td><td><code>alpha_sweep.json</code></td><td>2seed — 경계점 seed 증설 권장</td></tr>
+<tr><td>E1 SHAM_SCR</td><td><code>sham_scr.py</code></td><td><code>sham_scr.json</code></td><td class="warn">parity 실패(3.14×) → 무정보</td></tr>
+<tr><td>E2v2 (C0-C4)</td><td><code>generation.py</code></td><td><code>e2_v2.json</code></td><td>cluster-CI·생성 F1·per-item</td></tr>
+<tr><td>C3L 길이-매칭</td><td><code>length_match.py</code></td><td><code>c3_lenmatch.json</code></td><td class="ok">사전등록 PROMOTE</td></tr>
+<tr><td>교차검증 P1 (forget05)</td><td><code>crossval_forget05.py</code></td><td><code>xval_forget05.json</code></td><td class="warn">해리 방향 ✅(R=0.72) · 붕괴 ❌ — 얕은 편집(+0.65)</td></tr>
+<tr><td>교차검증 P2 (Llama-3.2-3B)</td><td><code>crossval_3b.py</code></td><td><code>xval_3b.json</code></td><td class="warn">동일 패턴(R=0.70·+0.64) — <b>α 비이식성</b> 관찰</td></tr>
+</table></div>
+<p class="sub">모델: <code>open-unlearning/tofu_Llama-3.2-1B-Instruct_{full,retain90}</code> · 편집: <code>engram/editor.py:apply</code>(adaptive α=1,p=1) · ckpt: gpu03 <code>/node_data/joon/checkpoints/ai_engram/</code> · 코드 정본: <code>experiments/unlearning_audit/</code></p>
+
+<h2>한계 · 남은 일</h2>
+<ul>
+<li><b>교차검증(260711 P1·P2)</b>: 해리 방향은 3세팅 유지(R 0.61/0.72/0.70), C3L 붕괴는 강한-편집(1B/f10) 한정 — 같은 α의 유효 강도가 세팅 간 ¼로 변동(α 비이식성). TOFU 합성 한계는 잔존 </li>
+<li style="display:none"> — Deeb&amp;Roger: 합성 사실은 unlearning 신뢰도 과대평가 경향. 워크샵 스코프에서만 방어 가능.</li>
+<li><b>C3L&lt;C3 역방향 미해명</b>(짧은 중립이 더 해로움 — 선택편향 의심, ~30분 규명) · <b>logit-lens 미실행</b>(해리의 whitebox 확인) — write-up 시 우선 제거.</li>
+<li>GOLD_EF seed 0 단일 · R값 CI 미산출 · relearn16 stride 결함(저자 4/9/14/19 누락) — 집필 시 재분석·caveat.</li>
+<li>강한 주장("은닉잔존")은 <b>미확정</b> — E1 sham은 parity 실패로 무정보, "기각" 아님(과신 표현은 260710 3R에서 철회).</li>
+</ul>
+
+<h2>프로세스 회고 (리뷰 4라운드)</h2>
+<div class="tw"><table>
+<tr><th>라운드</th><th>대상</th><th>잡아낸 것</th></tr>
+<tr><td>1R (3-agent+/fact --deep)</td><td>핸드오프 계획</td><td>E1 confound 3건·수치 오기 2건·novelty 위상</td></tr>
+<tr><td>2R (소스대조+Tier-0)</td><td>1R 판정 자체</td><td>1R 오류 4건(기전·이상규명·2×2 셀·클래스 표현), GOLD_EF sham 폐기→SHAM_SCR</td></tr>
+<tr><td>3R (결과 감사)</td><td>실행 결과+종결 판정</td><td>"기각" 과신 철회, E2 confound, k16=12샷 라벨버그, scope 과대</td></tr>
+<tr><td>4R (설계 재검)</td><td>E2v2/sham 재설계</td><td>C4 신설, C3 불산입 규칙, cluster-CI, 실행순서 게이트</td></tr>
+</table></div>
+<p class="sub">교훈: 실험 완주 ≠ 결론이 실험이 지지하는 만큼만 말함. 사전등록 게이트 2개(Δ-parity·PROMOTE)가 오독 1회를 차단하고 승격 1회를 자의성 없이 처리. 목표(강한 주장)는 실패했으나 통제 장치들이 발견이 됨.</p>
+
+<footer>SSOT: Obsidian <code>30_Projects/2607_AI_Engram_Audit/_Agent/260707_AI_Engram_Findings_Draft.md</code> (§4.5 워크샵 스토리) · milestone: <code>260711_AI_Engram_milestone_suppression_audit.md</code> · 생성 2026-07-11 · Engram Research</footer>
+</body>
+</html>

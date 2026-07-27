@@ -1,0 +1,32 @@
+{
+  "S_O_original_k0": 0.135,
+  "k_shots": [
+    0,
+    4,
+    16
+  ],
+  "arms": {
+    "edited": {
+      "k0": 2.538,
+      "k4": 3.051,
+      "k16": 3.04,
+      "k_gain": -0.502
+    },
+    "gold_ef": {
+      "k0": 2.551,
+      "k4": 2.404,
+      "k16": 2.297,
+      "k_gain": 0.254
+    },
+    "gold": {
+      "k0": 2.796,
+      "k4": 2.367,
+      "k16": 2.065,
+      "k_gain": 0.731
+    }
+  },
+  "extraction_signal": {
+    "edited_gain_minus_goldef_gain": -0.756,
+    "edited_k16_minus_goldef_k16": 0.743
+  }
+}

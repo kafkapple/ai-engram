@@ -158,6 +158,13 @@ Answer-token NLL confirms strong, *selective* forgetting — the forget set's NL
 
 Full reference (auto-generated from docstrings): **[API docs](https://jeakwon.github.io/ai-engram/api/)**.
 
+## Research audits
+
+The repository-local [TOFU unlearning audit](experiments/unlearning_audit/README.md)
+contains the reproducible July 2026 suppression-vs-erasure experiments and
+their compact results. It replaces the former `ai-engram-repro` side repository
+and host-specific `gpu03_*.py` files.
+
 ## Citation
 
 `ai-engram` is the reference implementation of **[AI Engram: In Search of Memory Traces in Artificial Intelligence](https://arxiv.org/abs/2606.14997)**, accepted to **ICML 2026 (Oral)**. If you use it, please cite:

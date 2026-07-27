@@ -25,6 +25,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest"]
 docs = ["mkdocs-material", "mkdocstrings[python]", "black"]
+audit = ["datasets", "matplotlib", "numpy", "scikit-learn"]
 
 [project.urls]
 Homepage = "https://github.com/jeakwon/ai-engram"
