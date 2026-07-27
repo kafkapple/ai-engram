@@ -24,87 +24,26 @@ import os
 
 import pytest
 import torch
-import torch.nn as nn
-from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 
 from engram import EditorConfig, EngramEditor, compose, count_ratio, weight_norm
+from experiments.unlearning_audit.tofu import (
+    ADAPT_ALPHA,
+    ADAPT_P,
+    BASE_ID,
+    IGNORE,
+    N_RETAIN_EVAL,
+    N_TOTAL,
+    PLAIN_ALPHA,
+    QAData as _QAData,
+    make_collate as _make_collate,
+    mean_answer_nll as _mean_answer_nll,
+)
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("ENGRAM_RUN_TOFU") != "1",
     reason="heavy TOFU integration test; set ENGRAM_RUN_TOFU=1 (needs GPU + cached TOFU model/data)",
 )
-
-IGNORE = -100
-SYSTEM = "You are a helpful assistant."
-DATE = "10 Apr 2025"
-BASE_ID = "open-unlearning/tofu_Llama-3.2-1B-Instruct_full"
-PLAIN_ALPHA = 0.6              # paper forget10 "plain"
-ADAPT_ALPHA, ADAPT_P = 1.0, 1  # paper forget10 "adaptive power-norm (p=1)"
-N_TOTAL = 4000                 # G_total sample count (preserves the alpha calibration)
-N_RETAIN_EVAL = 200            # retain subset for the NLL control
-
-
-# ---- notebook-faithful preprocessing (chat template + answer-only labels) ----
-def _preprocess(tok, q, a):
-    chat = [
-        {"role": "system", "content": SYSTEM},
-        {"role": "user", "content": q},
-        {"role": "assistant", "content": a},
-    ]
-    di = {"date_string": DATE}
-    chat_ids = tok.apply_chat_template(chat, tokenize=True, add_generation_prompt=False, return_dict=False, **di)
-    prompt_ids = tok.apply_chat_template(chat[:-1], tokenize=True, add_generation_prompt=True, return_dict=False, **di)
-    if chat_ids[-1] != tok.eos_token_id:
-        chat_ids = chat_ids + [tok.eos_token_id]
-    n = len(prompt_ids)
-    labels = [IGNORE] * n + chat_ids[n:]  # loss only on the answer tokens
-    return {
-        "input_ids": torch.tensor(chat_ids),
-        "labels": torch.tensor(labels),
-        "attention_mask": torch.ones(len(chat_ids), dtype=torch.long),
-    }
-
-
-class _QAData(Dataset):
-    def __init__(self, rows, tok):
-        self.rows, self.tok = rows, tok
-
-    def __len__(self):
-        return len(self.rows)
-
-    def __getitem__(self, i):
-        r = self.rows[i]
-        return _preprocess(self.tok, r["question"], r["answer"])
-
-
-def _make_collate(pad_id):
-    def collate(items):
-        ids = pad_sequence([it["input_ids"] for it in items], batch_first=True, padding_value=pad_id)
-        labels = pad_sequence([it["labels"] for it in items], batch_first=True, padding_value=IGNORE)
-        return {"input_ids": ids, "attention_mask": ids.ne(pad_id).long(), "labels": labels}
-
-    return collate
-
-
-@torch.no_grad()
-def _mean_answer_nll(model, rows, tok, device, bs=16):
-    """Mean over examples of the per-example average answer-token NLL."""
-    dl = DataLoader(_QAData(rows, tok), batch_size=bs, collate_fn=_make_collate(tok.pad_token_id))
-    lf = nn.CrossEntropyLoss(ignore_index=IGNORE, reduction="none")
-    vals = []
-    for batch in dl:
-        ids = batch["input_ids"].to(device)
-        attn = batch["attention_mask"].to(device)
-        labels = batch["labels"].to(device)
-        logits = model(input_ids=ids, attention_mask=attn).logits
-        sl = labels[..., 1:].contiguous()
-        lg = logits[..., :-1, :].contiguous()
-        losses = lf(lg.transpose(-1, -2), sl).sum(-1)
-        avg = losses / (labels != IGNORE).sum(-1)
-        vals += avg.float().cpu().tolist()
-    return float(sum(vals) / len(vals))
-
 
 def _assert_selective(tag, f0, f1, r0, r1):
     assert math.isfinite(f1) and math.isfinite(r1), f"{tag}: non-finite loss"
