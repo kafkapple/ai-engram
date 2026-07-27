@@ -48,7 +48,31 @@ table{border-collapse:collapse;width:100%;font-size:.82rem}th,td{padding:8px;bor
   </div>
 </section>
 
-<h2>1. 핵심 증거 지도 <span class="sub">지지·반증·한계를 동시에 표시</span></h2>
+<h2>1. 연구 계보와 핵심 이론 <span class="sub">원 논문 → 기억 편집 → suppression 감사</span></h2>
+<section class="grid">
+  <article class="card span6"><h3>기존 연구와 이번 연구의 위치</h3>
+    <table><thead><tr><th>계보</th><th>핵심 아이디어</th><th>이번 연구가 묻는 것</th></tr></thead><tbody>
+      <tr><td>Neural engram</td><td>기억 흔적은 specificity·reactivation·sufficiency·necessity로 판정</td><td>출력 감소만으로 내부 기억 삭제를 주장할 수 있는가?</td></tr>
+      <tr><td>FFN memory / Knowledge Neurons</td><td>사실 지식이 특정 activation·parameter 경로에 국소화될 수 있음</td><td>Q/K covariance 편집 뒤 concept direction과 접근 경로는 어떻게 달라지는가?</td></tr>
+      <tr><td>ROME · MEMIT · Task Arithmetic</td><td>저랭크 또는 방향성 parameter intervention으로 지식 행동을 변경</td><td>편집 효과가 content 삭제인가, retrieval 억제인가?</td></tr>
+      <tr><td>AI Engram (Kwon et al., ICML 2026 Oral)</td><td>target/total covariance로 closed-form concept projector를 구성</td><td>공개 구현을 재현하고 recovery·prompt attack·control로 강한 주장을 감사</td></tr>
+    </tbody></table>
+    <p class="sub">이 대시보드는 <b>kafkapple/ai-engram 포크</b>의 재현·감사 결과다. 원 저자 저장소 자체가 아니며, 원 방법과 추가 실험을 구분한다.</p>
+  </article>
+  <article class="card span6"><h3>핵심 이론 모델</h3>
+    <div class="callout"><b>Concept projector</b><br><code>P<sub>ℓ</sub> = W<sub>ℓ</sub> C<sub>target,ℓ</sub> pinv(C<sub>total,ℓ</sub>)</code><br><b>Edit</b><br><code>W<sub>ℓ</sub> ← W<sub>ℓ</sub> − α f<sub>ℓ</sub> P<sub>ℓ</sub></code></div>
+    <div class="flow" style="margin-top:12px">
+      <div class="step"><b>표본</b><small>target / reference와 token mask</small></div>
+      <div class="step"><b>통계</b><small>layer별 covariance 수집</small></div>
+      <div class="step"><b>투영</b><small>concept-aligned weight 성분 계산</small></div>
+      <div class="step"><b>편집</b><small>α·layer scale로 감산</small></div>
+      <div class="step"><b>감사</b><small>forget·utility·recovery·transfer</small></div>
+    </div>
+    <p class="sub"><b>판정 모델:</b> behavioral forgetting ≠ representational erasure. 정적 성능, 표상 전이, 재학습 속도, 추출 공격, 무관 context 손상을 함께 봐야 한다.</p>
+  </article>
+</section>
+
+<h2>2. 핵심 증거 지도 <span class="sub">지지·반증·한계를 동시에 표시</span></h2>
 <section class="grid">
   <article class="card span4"><h3>표상 지속 <span class="tag">probe_transfer</span></h3>
     <div class="barrow"><span>Base CV</span><div class="track"><div class="fill" style="width:99.8%"></div></div><span class="num">.998</span></div>
@@ -93,7 +117,7 @@ table{border-collapse:collapse;width:100%;font-size:.82rem}th,td{padding:8px;bor
   </article>
 </section>
 
-<h2>2. 현재 결론의 경계</h2>
+<h2>3. 현재 결론의 경계</h2>
 <section class="grid">
   <article class="card span6"><h3>확실히 말할 수 있음</h3><ul>
     <li>공개 구현의 TOFU forgetting과 Q/K 국소화는 재현됨.</li>
@@ -109,7 +133,44 @@ table{border-collapse:collapse;width:100%;font-size:.82rem}th,td{padding:8px;bor
   </ul></article>
 </section>
 
-<h2>3. 멀티모달 확장: 공통 질문과 modality별 관측량</h2>
+<h2>4. 코드·실험 모듈 지도 <span class="sub">공통 코어와 일회성 실험의 경계</span></h2>
+<section class="grid">
+  <article class="card span7"><h3>재사용 가능한 <code>src/engram</code></h3>
+    <table><thead><tr><th>모듈</th><th>책임</th></tr></thead><tbody>
+      <tr><td><code>config.py</code></td><td><code>EditorConfig</code>: layer·α·scaling 등 편집 설정</td></tr>
+      <tr><td><code>collectors.py</code> · <code>stats.py</code></td><td>forward hook 기반 masked covariance 수집, 통계 병합·저장·복원</td></tr>
+      <tr><td><code>handlers.py</code></td><td><code>nn.Linear</code>·HF <code>Conv1D</code>의 weight 방향 차이를 단일 인터페이스로 흡수</td></tr>
+      <tr><td><code>editor.py</code></td><td>통계 수집 → projector 계산 → 적용의 핵심 파이프라인</td></tr>
+      <tr><td><code>scaling.py</code></td><td>count ratio·weight norm·effective rank·uniform layer scaling과 결과 타입</td></tr>
+      <tr><td><code>llm.py</code> · <code>moe.py</code></td><td>LLM 편의 API와 opt-in fused MoE adapter</td></tr>
+    </tbody></table>
+  </article>
+  <article class="card span5"><h3>감사 실험 계층</h3>
+    <table><thead><tr><th>영역</th><th>내용</th></tr></thead><tbody>
+      <tr><td><code>tofu.py</code></td><td>전처리·모델 로딩·NLL·편집·embedding·fine-tuning·결과 저장 공통화</td></tr>
+      <tr><td>재현</td><td>ablation, alpha sweep, generation, report/frontier</td></tr>
+      <tr><td>인과 통제</td><td>novel/entity control, length match, cross-validation, parity SHAM</td></tr>
+      <tr><td>숨은 흔적</td><td>probe transfer, relearn attack, prompt extraction</td></tr>
+      <tr><td>실행 진입점</td><td>단계별 Jupyter notebook + 얇은 가설별 CLI</td></tr>
+    </tbody></table>
+    <p class="sub">원칙: 모델 독립 로직은 코어에, TOFU 공통 로직은 <code>tofu.py</code>에 한 번만 둔다. 개별 스크립트는 가설·조건·출력만 선언한다.</p>
+  </article>
+</section>
+
+<h2>5. 추가 가설 레지스트리 <span class="sub">지지 조건과 반증 조건을 함께 사전 명시</span></h2>
+<section class="card">
+  <table><thead><tr><th>ID</th><th>가설</th><th>핵심 예측</th><th>반증/약화 조건</th></tr></thead><tbody>
+    <tr><td>H1</td><td>Suppression ≠ erasure</td><td>효과량 매칭 후 edited가 never-knew보다 빠르게 회복</td><td>다중 seed·author에서 recovery 해리 소멸</td></tr>
+    <tr><td>H2</td><td>Q/K 접근 경로 손상</td><td>content probe는 남고 attention/context utilization만 선택적으로 변화</td><td>표상 자체가 소실되거나 경로 지표가 보존</td></tr>
+    <tr><td>H3</td><td>α가 아닌 edit dose가 일반화 단위</td><td>forget·retain damage를 매칭하면 R2 context damage가 재현</td><td>dose matching 뒤에도 R2가 설정별 불일치</td></tr>
+    <tr><td>H4</td><td>Edit-hole 대안</td><td>동일 layer profile·norm의 SHAM도 recovery/context 패턴을 생성</td><td>parity SHAM은 무효과이고 real edit만 해리</td></tr>
+    <tr><td>H5</td><td>Multimodal trace transfer</td><td>patch/frame/tube covariance 편집에서도 forgetting–recovery 해리</td><td>utility-preserving 선택적 편집이 불가능</td></tr>
+    <tr><td>H6</td><td>Cross-modal cue leakage</td><td>한 modality 편집 뒤 다른 modality cue로 target 접근·재학습</td><td>교차 cue가 matched control 이상 회복시키지 못함</td></tr>
+    <tr><td>H7</td><td>Trace factorization</td><td>identity·content·action을 선택적으로 편집 가능</td><td>항상 함께 붕괴해 독립 trace 가정 실패</td></tr>
+  </tbody></table>
+</section>
+
+<h2>6. 멀티모달 확장: 공통 질문과 modality별 관측량</h2>
 <section class="card">
   <div class="flow">
     <div class="step"><b>① Concept 정의</b><small>인물·객체·화자·행동·사건을 paired positive/negative set으로 구성</small></div>
@@ -133,7 +194,7 @@ table{border-collapse:collapse;width:100%;font-size:.82rem}th,td{padding:8px;bor
   </article>
 </section>
 
-<h2>4. 단계별 실행 계획</h2>
+<h2>7. 단계별 실행 계획</h2>
 <section class="road">
   <div class="phase"><b>P0 · 텍스트 인과 정리</b><ul><li>효과량 매칭 1B/3B/f05</li><li>author-balanced relearn</li><li>multi-seed GOLD_EF</li></ul></div>
   <div class="phase"><b>P1 · Image 최소 PoC</b><ul><li>CLIP/ViT patch covariance</li><li>identity vs attribute 분리</li><li>caption↔image cross-cue</li></ul></div>
@@ -141,13 +202,15 @@ table{border-collapse:collapse;width:100%;font-size:.82rem}th,td{padding:8px;bor
   <div class="phase"><b>P3 · Video 통합</b><ul><li>시간축 covariance</li><li>person/action/event factorization</li><li>audio-visual modality substitution</li></ul></div>
 </section>
 
-<h2>5. 우선순위와 성공 기준</h2>
+<h2>8. 다음 우선 실험과 성공 기준</h2>
 <section class="grid">
   <article class="card span8"><table><thead><tr><th>#</th><th>실험</th><th>성공 기준</th><th>이유</th></tr></thead><tbody>
-    <tr><td>1</td><td>효과량 매칭 교차검증</td><td>static forget/retain damage matched 후 R1/R2 판정</td><td>현재 최대 confound 제거</td></tr>
-    <tr><td>2</td><td>parity-matched SHAM</td><td>layer profile corr↑, global norm ratio 0.9–1.1</td><td>edit-hole 인과 통제</td></tr>
-    <tr><td>3</td><td>Image identity PoC</td><td>region trace·cross-cue·relearning을 모두 측정</td><td>가장 작은 멀티모달 일반화</td></tr>
-    <tr><td>4</td><td>Audio/Video factorization</td><td>content와 identity/action의 선택적 편집</td><td>modality entanglement 검증</td></tr>
+    <tr><td>P0-a</td><td>효과량 매칭 교차검증</td><td>1B f10/f05·3B의 static forget/retain damage matched 후 R1/R2 판정</td><td>현재 최대 confound 제거</td></tr>
+    <tr><td>P0-b</td><td>parity-matched SHAM</td><td>target layer profile corr↑, global norm ratio 0.9–1.1</td><td>edit-hole 인과 통제</td></tr>
+    <tr><td>P0-c</td><td>author-balanced relearn16</td><td>다중 seed GOLD_EF에서도 edited recovery 우위</td><td>표본·초기화 의존성 제거</td></tr>
+    <tr><td>P1</td><td>white-box pathway</td><td>logit lens·attention entropy·context utilization로 H2 판정</td><td>억제 기전 직접 검사</td></tr>
+    <tr><td>P2</td><td>Image identity PoC</td><td>region trace·cross-cue·relearning을 모두 측정</td><td>가장 작은 멀티모달 일반화</td></tr>
+    <tr><td>P3</td><td>Audio → Video factorization</td><td>content와 identity/action의 선택적 편집</td><td>image 성공 뒤에만 확장</td></tr>
   </tbody></table></article>
   <article class="card span4"><h3>Go / No-Go</h3>
     <p><span class="pill p-ok">GO</span> 효과량 매칭에서도 recovery 해리가 유지되면 image PoC로 확장.</p>
@@ -156,7 +219,7 @@ table{border-collapse:collapse;width:100%;font-size:.82rem}th,td{padding:8px;bor
   </article>
 </section>
 
-<h2>6. 재현 자산</h2>
+<h2>9. 재현 자산</h2>
 <section class="card links">
   <a class="btn" href="file:///Users/joon/dev/ai-engram/examples/ai_engram_tofu_unlearning_audit.ipynb">📓 실행형 Notebook</a>
   <a class="btn" href="file:///Users/joon/dev/ai-engram/experiments/unlearning_audit/README.md">🧪 Experiment README</a>
@@ -164,7 +227,7 @@ table{border-collapse:collapse;width:100%;font-size:.82rem}th,td{padding:8px;bor
   <a class="btn" href="file:///Users/joon/Obsidian/30_Projects/_Hold/2607_AI_Engram_Audit/260711_AI_Engram_milestone_suppression_audit.md">🗂️ Milestone Note</a>
 </section>
 </main>
-<footer>Updated 2026-07-27 · Source of truth: kafkapple/ai-engram @ 52e6065 · 수치는 저장된 JSON 결과 기반이며 새 실험 결과를 생성하지 않음.</footer>
+<footer>Updated 2026-07-27 · Repository: kafkapple/ai-engram fork · Experiment snapshot: 52e6065 · 수치는 저장된 JSON 결과 기반이며 새 실험 결과를 생성하지 않음.</footer>
 <script>
 function toggleTheme(){const root=document.documentElement;root.dataset.theme=root.dataset.theme==='light'?'':'light';try{localStorage.setItem('ai-engram-theme',root.dataset.theme)}catch(e){}}
 try{document.documentElement.dataset.theme=localStorage.getItem('ai-engram-theme')||''}catch(e){}
