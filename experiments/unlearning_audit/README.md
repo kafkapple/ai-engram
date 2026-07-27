@@ -19,11 +19,14 @@ stored in the separate `ai-engram-repro` repository and as untracked
 
 ## Layout
 
-- `common.py`: model loading, engram collection/editing, embeddings, paths.
+- `tofu.py`: TOFU preprocessing, model loading, evaluation, engram
+  collection/editing, embeddings, fine-tuning, and artifact paths.
 - Other Python files: one experiment each, named by purpose rather than host.
 - `results/`: compact final JSON/figures/report. Logs, checkpoints, executed
   notebooks, caches, and environment bootstrap scripts are intentionally not
   versioned.
+- [`../../examples/ai_engram_tofu_unlearning_audit.ipynb`](../../examples/ai_engram_tofu_unlearning_audit.ipynb):
+  theory-first, step-by-step executable walkthrough.
 
 Install and run from the repository root:
 

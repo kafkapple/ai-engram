@@ -17,10 +17,10 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from tests.test_tofu_unlearn import (  # noqa: E402
-    BASE_ID, IGNORE, _QAData, _make_collate, _mean_answer_nll,
+from experiments.unlearning_audit.tofu import (  # noqa: E402
+    BASE_ID, QAData, collect_engram, make_collate, mean_answer_nll,
 )
-from engram import EditorConfig, EngramEditor, compose, count_ratio, weight_norm  # noqa: E402
+from engram import compose, count_ratio, weight_norm  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(__file__), "results")
 N_TOTAL = 4000
@@ -32,8 +32,8 @@ ALPHAS = [0.5, 1.0, 2.0]
 
 def relearn_end(model, train_rows, eval_rows, tok, device, seed):
     torch.manual_seed(seed)
-    dl = DataLoader(_QAData(train_rows, tok), batch_size=BS, shuffle=True,
-                    collate_fn=_make_collate(tok.pad_token_id))
+    dl = DataLoader(QAData(train_rows, tok), batch_size=BS, shuffle=True,
+                    collate_fn=make_collate(tok.pad_token_id))
     opt = torch.optim.AdamW(model.parameters(), lr=LR)
     step = 0
     while step < STEPS:
@@ -45,7 +45,7 @@ def relearn_end(model, train_rows, eval_rows, tok, device, seed):
             if step >= STEPS:
                 break
     model.eval()
-    return _mean_answer_nll(model, eval_rows, tok, device)
+    return mean_answer_nll(model, eval_rows, tok, device)
 
 
 def main():
@@ -63,26 +63,19 @@ def main():
     retain = list(load_dataset("locuslab/TOFU", "retain_perturbed")["train"])
     f_train, f_eval, r_eval = forget[:16], forget[100:200], retain[:100]
 
-    S_O = round(_mean_answer_nll(base, f_eval, tok, device), 3)     # original still-has-it
-    base_retain = round(_mean_answer_nll(base, r_eval, tok, device), 3)
+    S_O = round(mean_answer_nll(base, f_eval, tok, device), 3)     # original still-has-it
+    base_retain = round(mean_answer_nll(base, r_eval, tok, device), 3)
 
     # collect covariance + engram projection ONCE (alpha/scale-independent)
-    ed = EngramEditor(base, EditorConfig(storage_device=torch.device(device)))
-    dl = lambda rows: DataLoader(_QAData(rows, tok), batch_size=8, collate_fn=_make_collate(tok.pad_token_id))
-    feats = lambda b: {"input_ids": b["input_ids"].to(device), "attention_mask": b["attention_mask"].to(device)}
-    mask = lambda b: b["labels"] != IGNORE
-    gf = ed.collect_statistics(dl(forget), batch_fn=feats, mask_fn=mask)
-    gt = ed.collect_statistics(dl(full), batch_fn=feats, mask_fn=mask)
-    engram = ed.compute_engram_weights(gf, gt)
-    del gf, gt; torch.cuda.empty_cache()
+    ed, engram = collect_engram(base, forget, full, tok, device)
 
     scales = {"plain": count_ratio(1.0), "adaptive": compose(count_ratio(1.0), weight_norm(1.0))}
     rows = []
     for stype, scale in scales.items():
         for a in ALPHAS:
             edited = ed.apply(engram, alpha=a, scale=scale).eval()          # cheap: deepcopy + subtract
-            sf = round(_mean_answer_nll(edited, f_eval, tok, device), 3)     # static forget
-            sr = round(_mean_answer_nll(edited, r_eval, tok, device), 3)     # retain utility
+            sf = round(mean_answer_nll(edited, f_eval, tok, device), 3)     # static forget
+            sr = round(mean_answer_nll(edited, r_eval, tok, device), 3)     # retain utility
             recs = []
             for s in SEEDS:
                 m = copy.deepcopy(edited)

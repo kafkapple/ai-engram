@@ -16,10 +16,10 @@ import json, os, sys
 import torch
 from torch.utils.data import DataLoader
 
-from tests.test_tofu_unlearn import (  # noqa: E402
-    BASE_ID, _QAData, _make_collate, _mean_answer_nll,
+from experiments.unlearning_audit.tofu import (  # noqa: E402
+    BASE_ID, QAData, make_collate, mean_answer_nll,
 )
-from experiments.unlearning_audit.common import edit_model
+from experiments.unlearning_audit.tofu import edit_model
 
 OUT = os.path.join(os.path.dirname(__file__), "results")
 GOLD_ID = "open-unlearning/tofu_Llama-3.2-1B-Instruct_retain90"
@@ -31,10 +31,10 @@ EVAL_EVERY = 5
 def relearn_curve(model, train_rows, f_eval, r_eval, tok, device):
     """Fine-tune on train_rows; log (step, forget_nll, retain_nll)."""
     pad = tok.pad_token_id
-    dl = DataLoader(_QAData(train_rows, tok), batch_size=BS, shuffle=True, collate_fn=_make_collate(pad))
+    dl = DataLoader(QAData(train_rows, tok), batch_size=BS, shuffle=True, collate_fn=make_collate(pad))
     opt = torch.optim.AdamW(model.parameters(), lr=LR)
-    curve = [[0, round(_mean_answer_nll(model, f_eval, tok, device), 3),
-                 round(_mean_answer_nll(model, r_eval, tok, device), 3)]]
+    curve = [[0, round(mean_answer_nll(model, f_eval, tok, device), 3),
+                 round(mean_answer_nll(model, r_eval, tok, device), 3)]]
     step = 0
     while step < STEPS:
         model.train()
@@ -45,8 +45,8 @@ def relearn_curve(model, train_rows, f_eval, r_eval, tok, device):
             out.loss.backward(); opt.step(); opt.zero_grad(); step += 1
             if step % EVAL_EVERY == 0:
                 model.eval()
-                curve.append([step, round(_mean_answer_nll(model, f_eval, tok, device), 3),
-                                    round(_mean_answer_nll(model, r_eval, tok, device), 3)])
+                curve.append([step, round(mean_answer_nll(model, f_eval, tok, device), 3),
+                                    round(mean_answer_nll(model, r_eval, tok, device), 3)])
                 model.train()
             if step >= STEPS:
                 break

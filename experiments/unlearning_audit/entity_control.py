@@ -21,10 +21,10 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from tests.test_tofu_unlearn import (  # noqa: E402
-    BASE_ID, _QAData, _make_collate, _mean_answer_nll,
+from experiments.unlearning_audit.tofu import (  # noqa: E402
+    BASE_ID, QAData, make_collate, mean_answer_nll,
 )
-from experiments.unlearning_audit.common import cpu_state_dict, edit_model
+from experiments.unlearning_audit.tofu import cpu_state_dict, edit_model, finetune
 
 OUT = os.path.join(os.path.dirname(__file__), "results")
 GOLD_ID = "open-unlearning/tofu_Llama-3.2-1B-Instruct_retain90"
@@ -34,30 +34,14 @@ RE_STEPS, EF_STEPS, LR, BS, EVAL_EVERY = 40, 150, 2e-5, 8, 20
 SEEDS = [0, 1, 2]
 
 
-def finetune(model, rows, tok, device, steps, seed=0):
-    torch.manual_seed(seed)
-    dl = DataLoader(_QAData(rows, tok), batch_size=BS, shuffle=True, collate_fn=_make_collate(tok.pad_token_id))
-    opt = torch.optim.AdamW(model.parameters(), lr=LR)
-    step = 0
-    while step < steps:
-        model.train()
-        for b in dl:
-            out = model(input_ids=b["input_ids"].to(device), attention_mask=b["attention_mask"].to(device),
-                        labels=b["labels"].to(device))
-            out.loss.backward(); opt.step(); opt.zero_grad(); step += 1
-            if step >= steps:
-                break
-    return model.eval()
-
-
 def relearn_curve(model, train_rows, eval_rows, tok, device, seed):
     model.eval()  # 260710 fix: shell model is reused across runs and was left in train()
     # mode by the previous call, so the step-0 anchor NLL was measured in train mode
     # (harmless iff dropout=0, but eval mode makes the anchor unambiguous).
     torch.manual_seed(seed)
-    dl = DataLoader(_QAData(train_rows, tok), batch_size=BS, shuffle=True, collate_fn=_make_collate(tok.pad_token_id))
+    dl = DataLoader(QAData(train_rows, tok), batch_size=BS, shuffle=True, collate_fn=make_collate(tok.pad_token_id))
     opt = torch.optim.AdamW(model.parameters(), lr=LR)
-    curve = [round(_mean_answer_nll(model, eval_rows, tok, device), 3)]
+    curve = [round(mean_answer_nll(model, eval_rows, tok, device), 3)]
     step = 0
     while step < RE_STEPS:
         model.train()
@@ -66,7 +50,7 @@ def relearn_curve(model, train_rows, eval_rows, tok, device, seed):
                         labels=b["labels"].to(device))
             out.loss.backward(); opt.step(); opt.zero_grad(); step += 1
             if step % EVAL_EVERY == 0:
-                model.eval(); curve.append(round(_mean_answer_nll(model, eval_rows, tok, device), 3)); model.train()
+                model.eval(); curve.append(round(mean_answer_nll(model, eval_rows, tok, device), 3)); model.train()
             if step >= RE_STEPS:
                 break
     return curve
@@ -97,15 +81,15 @@ def main():
         id_, torch_dtype=torch.bfloat16, attn_implementation="sdpa").to(device)
 
     model = load(BASE_ID)
-    S_O = round(_mean_answer_nll(model.eval(), eval_held, tok, device), 3)   # original still-has-it
+    S_O = round(mean_answer_nll(model.eval(), eval_held, tok, device), 3)   # original still-has-it
     edited_sd = cpu_state_dict(edit_model(model, forget, full, tok, device))
     del model; torch.cuda.empty_cache()
 
     gold = load(GOLD_ID); gold_sd = cpu_state_dict(gold)
     # GOLD_EF: finetune gold on ef_train -> entity-familiar with all authors, never eval facts
     gold_ef = finetune(gold, ef_train, tok, device, EF_STEPS)
-    ef_train_nll = round(_mean_answer_nll(gold_ef, relearn16, tok, device), 3)   # should be low (memorized)
-    ef_eval_nll = round(_mean_answer_nll(gold_ef, eval_held, tok, device), 3)    # should be HIGH (never saw)
+    ef_train_nll = round(mean_answer_nll(gold_ef, relearn16, tok, device), 3)   # should be low (memorized)
+    ef_eval_nll = round(mean_answer_nll(gold_ef, eval_held, tok, device), 3)    # should be HIGH (never saw)
     gold_ef_sd = cpu_state_dict(gold_ef)
     del gold, gold_ef; torch.cuda.empty_cache()
 

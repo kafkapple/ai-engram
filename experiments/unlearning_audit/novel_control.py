@@ -16,10 +16,10 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from tests.test_tofu_unlearn import (  # noqa: E402
-    BASE_ID, _QAData, _make_collate, _mean_answer_nll,
+from experiments.unlearning_audit.tofu import (  # noqa: E402
+    BASE_ID, QAData, make_collate, mean_answer_nll,
 )
-from experiments.unlearning_audit.common import cpu_state_dict, edit_model
+from experiments.unlearning_audit.tofu import cpu_state_dict, edit_model
 
 OUT = os.path.join(os.path.dirname(__file__), "results")
 GOLD_ID = "open-unlearning/tofu_Llama-3.2-1B-Instruct_retain90"
@@ -50,10 +50,10 @@ def _novel_qa():
 
 def relearn(model, train_rows, eval_rows, tok, device, seed):
     torch.manual_seed(seed)
-    dl = DataLoader(_QAData(train_rows, tok), batch_size=BS, shuffle=True,
-                    collate_fn=_make_collate(tok.pad_token_id))
+    dl = DataLoader(QAData(train_rows, tok), batch_size=BS, shuffle=True,
+                    collate_fn=make_collate(tok.pad_token_id))
     opt = torch.optim.AdamW(model.parameters(), lr=LR)
-    curve = [[0, round(_mean_answer_nll(model, eval_rows, tok, device), 3)]]
+    curve = [[0, round(mean_answer_nll(model, eval_rows, tok, device), 3)]]
     step = 0
     while step < STEPS:
         model.train()
@@ -62,7 +62,7 @@ def relearn(model, train_rows, eval_rows, tok, device, seed):
                         labels=b["labels"].to(device))
             out.loss.backward(); opt.step(); opt.zero_grad(); step += 1
             if step % EVAL_EVERY == 0:
-                model.eval(); curve.append([step, round(_mean_answer_nll(model, eval_rows, tok, device), 3)]); model.train()
+                model.eval(); curve.append([step, round(mean_answer_nll(model, eval_rows, tok, device), 3)]); model.train()
             if step >= STEPS:
                 break
     return curve
@@ -86,7 +86,7 @@ def main():
 
     model = load(BASE_ID)
     orig_sd = cpu_state_dict(model)
-    S_O = round(_mean_answer_nll(model.eval(), f_eval, tok, device), 3)   # original still-has-it anchor
+    S_O = round(mean_answer_nll(model.eval(), f_eval, tok, device), 3)   # original still-has-it anchor
     edited_sd = cpu_state_dict(edit_model(model, forget, full, tok, device))
     gold = load(GOLD_ID); gold_sd = cpu_state_dict(gold)
     del gold; torch.cuda.empty_cache()

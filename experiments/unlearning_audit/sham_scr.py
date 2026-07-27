@@ -34,15 +34,15 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from tests.test_tofu_unlearn import (  # noqa: E402
-    BASE_ID, IGNORE, _QAData, _make_collate, _mean_answer_nll,
+from experiments.unlearning_audit.tofu import (  # noqa: E402
+    BASE_ID, CHECKPOINTS, IGNORE, QAData, make_collate, mean_answer_nll,
     ADAPT_ALPHA, ADAPT_P,
 )
 from experiments.unlearning_audit.entity_control import relearn_curve  # noqa: E402  (same 40-step/eval protocol)
 from engram import EditorConfig, EngramEditor, compose, count_ratio, weight_norm  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(__file__), "results")
-CKPT = os.path.join(os.environ.get("CHECKPOINT_ROOT", "/node_data/joon/checkpoints"), "ai_engram")
+CKPT = CHECKPOINTS
 GOLD_ID = "open-unlearning/tofu_Llama-3.2-1B-Instruct_retain90"
 N_TOTAL = 4000
 PER_AUTHOR, N_AUTHORS, SPLIT = 20, 20, 12
@@ -99,12 +99,12 @@ def main():
         id_, torch_dtype=torch.bfloat16, attn_implementation="sdpa").to(device)
 
     model = load(BASE_ID).eval()
-    S_O = round(_mean_answer_nll(model, eval_held, tok, device), 3)
-    base_retain = round(_mean_answer_nll(model, retain, tok, device), 3)
+    S_O = round(mean_answer_nll(model, eval_held, tok, device), 3)
+    base_retain = round(mean_answer_nll(model, retain, tok, device), 3)
 
     # --- statistics: g_total shared; engrams computed sequentially to bound memory ---
     ed = EngramEditor(model, EditorConfig(storage_device=torch.device(device)))
-    dl = lambda rows: DataLoader(_QAData(rows, tok), batch_size=8, collate_fn=_make_collate(tok.pad_token_id))
+    dl = lambda rows: DataLoader(QAData(rows, tok), batch_size=8, collate_fn=make_collate(tok.pad_token_id))
     feats = lambda b: {"input_ids": b["input_ids"].to(device), "attention_mask": b["attention_mask"].to(device)}
     mask = lambda b: b["labels"] != IGNORE
 
@@ -134,15 +134,15 @@ def main():
     scale = compose(count_ratio(1.0), weight_norm(ADAPT_P))
     edited = ed.apply(eng_real, alpha=ADAPT_ALPHA, scale=scale).eval()
     edited_sd = {k: v.detach().cpu().clone() for k, v in edited.state_dict().items()}
-    edited_static = round(_mean_answer_nll(edited, eval_held, tok, device), 3)
-    edited_retain = round(_mean_answer_nll(edited, retain, tok, device), 3)
+    edited_static = round(mean_answer_nll(edited, eval_held, tok, device), 3)
+    edited_retain = round(mean_answer_nll(edited, retain, tok, device), 3)
     del edited
     torch.cuda.empty_cache()
 
     sham = ed.apply(eng_sham, alpha=ADAPT_ALPHA, scale=scale).eval()
     sham_sd = {k: v.detach().cpu().clone() for k, v in sham.state_dict().items()}
-    sham_static = round(_mean_answer_nll(sham, eval_held, tok, device), 3)
-    sham_retain = round(_mean_answer_nll(sham, retain, tok, device), 3)
+    sham_static = round(mean_answer_nll(sham, eval_held, tok, device), 3)
+    sham_retain = round(mean_answer_nll(sham, retain, tok, device), 3)
     del sham, eng_real, eng_sham
     torch.cuda.empty_cache()
 

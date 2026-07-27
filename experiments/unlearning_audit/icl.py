@@ -32,13 +32,13 @@ import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset
 
-from tests.test_tofu_unlearn import (  # noqa: E402
-    BASE_ID, IGNORE, SYSTEM, DATE, _mean_answer_nll,
+from experiments.unlearning_audit.tofu import (  # noqa: E402
+    BASE_ID, CHECKPOINTS, IGNORE, SYSTEM, DATE, mean_answer_nll,
 )
 from experiments.unlearning_audit.entity_control import finetune, EF_STEPS  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(__file__), "results")
-CKPT = os.path.join(os.environ.get("CHECKPOINT_ROOT", "/node_data/joon/checkpoints"), "ai_engram")
+CKPT = CHECKPOINTS
 GOLD_ID = "open-unlearning/tofu_Llama-3.2-1B-Instruct_retain90"
 PER_AUTHOR, N_AUTHORS, SPLIT = 20, 20, 12
 K_SHOTS = [0, 4, 12]  # 260710 fix: per-author shot pool is ef_train (SPLIT=12) — the 260709 run's
@@ -140,7 +140,7 @@ def main():
     torch.cuda.empty_cache()
 
     model = load(BASE_ID)  # reusable shell
-    S_O_ref = round(_mean_answer_nll(model.eval(), eval_held, tok, device), 3)  # original, k=0 reference floor
+    S_O_ref = round(mean_answer_nll(model.eval(), eval_held, tok, device), 3)  # original, k=0 reference floor
 
     res = {"S_O_original_k0": S_O_ref, "k_shots": K_SHOTS, "arms": {}}
     for name, sd in {"edited": edited_sd, "gold_ef": gold_ef_sd, "gold": gold_sd}.items():

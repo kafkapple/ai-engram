@@ -18,14 +18,14 @@ from __future__ import annotations
 import json, os, sys
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
 
-from tests.test_tofu_unlearn import (  # noqa: E402
-    BASE_ID, N_RETAIN_EVAL, IGNORE,
-    _QAData, _make_collate, _mean_answer_nll,
-    ADAPT_ALPHA, ADAPT_P,
+from experiments.unlearning_audit.tofu import (
+    BASE_ID,
+    N_RETAIN_EVAL,
+    edit_model,
+    embed,
+    mean_answer_nll,
 )
-from engram import EditorConfig, EngramEditor, compose, count_ratio, weight_norm  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(__file__), "results")
 N_TOTAL = 4000
@@ -34,22 +34,6 @@ SEED = 0
 
 def qa_text(row):
     return f"{row['question']} {row['answer']}"
-
-
-@torch.no_grad()
-def embed(model, tok, rows, device, bs=16):
-    """Mean-pooled last hidden state per QA — a label-free semantic embedding."""
-    vecs = []
-    for i in range(0, len(rows), bs):
-        chunk = rows[i:i + bs]
-        enc = tok([qa_text(r) for r in chunk], return_tensors="pt", padding=True,
-                  truncation=True, max_length=128).to(device)
-        out = model(**enc, output_hidden_states=True)
-        h = out.hidden_states[-1]                       # [B,T,D]
-        m = enc["attention_mask"].unsqueeze(-1)         # [B,T,1]
-        pooled = (h * m).sum(1) / m.sum(1).clamp(min=1)
-        vecs.append(pooled.float().cpu().numpy())
-    return np.concatenate(vecs, 0)
 
 
 def linear_probe_acc(model, tok, pos_rows, neg_rows, device):
@@ -65,21 +49,6 @@ def linear_probe_acc(model, tok, pos_rows, neg_rows, device):
     X = (X - X.mean(0)) / (X.std(0) + 1e-6)
     clf = LogisticRegression(max_iter=1000, C=1.0)
     return float(cross_val_score(clf, X, y, cv=5).mean())
-
-
-def edit_with(editor, forget_rows, total_rows, tok, device):
-    def covdl(rows):
-        return DataLoader(_QAData(rows, tok), batch_size=8, collate_fn=_make_collate(tok.pad_token_id))
-
-    def feats(b):
-        return {"input_ids": b["input_ids"].to(device), "attention_mask": b["attention_mask"].to(device)}
-    mask_fn = lambda b: b["labels"] != IGNORE
-    gf = editor.collect_statistics(covdl(forget_rows), batch_fn=feats, mask_fn=mask_fn)
-    gt = editor.collect_statistics(covdl(total_rows), batch_fn=feats, mask_fn=mask_fn)
-    eng = editor.compute_engram_weights(gf, gt)
-    del gf, gt; torch.cuda.empty_cache()
-    return editor.apply(eng, alpha=ADAPT_ALPHA,
-                        scale=compose(count_ratio(1.0), weight_norm(ADAPT_P))).eval()
 
 
 def main():
@@ -115,8 +84,8 @@ def main():
     auto_forget = [full[i] for i in auto_idx]
     auto_total = auto_forget + retain_eval  # label-light total
 
-    f0 = _mean_answer_nll(base, forget, tok, device)
-    r0 = _mean_answer_nll(base, retain_eval, tok, device)
+    f0 = mean_answer_nll(base, forget, tok, device)
+    r0 = mean_answer_nll(base, retain_eval, tok, device)
     probe0 = linear_probe_acc(base, tok, forget, retain_eval, device)
 
     results = {"base": {"forget_nll": round(f0, 3), "retain_nll": round(r0, 3),
@@ -129,10 +98,9 @@ def main():
     full_total = full  # 4000, a superset of forget
 
     # labeled edit (X+=forget10, X-=full total)
-    ed_lab = edit_with(EngramEditor(base, EditorConfig(storage_device=torch.device(device))),
-                       forget, full_total, tok, device)
-    fl = _mean_answer_nll(ed_lab, forget, tok, device)
-    rl = _mean_answer_nll(ed_lab, retain_eval, tok, device)
+    ed_lab = edit_model(base, forget, full_total, tok, device)
+    fl = mean_answer_nll(ed_lab, forget, tok, device)
+    rl = mean_answer_nll(ed_lab, retain_eval, tok, device)
     probe_l = linear_probe_acc(ed_lab, tok, forget, retain_eval, device)
     del ed_lab; torch.cuda.empty_cache()
     results["labeled"] = {"forget_nll": round(fl, 3), "forget_d": round(fl - f0, 3),
@@ -140,10 +108,9 @@ def main():
                           "probe_acc": round(probe_l, 3)}
 
     # label-light edit (X+=auto NN, X-=full total, same calibration set)
-    ed_auto = edit_with(EngramEditor(base, EditorConfig(storage_device=torch.device(device))),
-                        auto_forget, full_total, tok, device)
-    fa = _mean_answer_nll(ed_auto, forget, tok, device)
-    ra = _mean_answer_nll(ed_auto, retain_eval, tok, device)
+    ed_auto = edit_model(base, auto_forget, full_total, tok, device)
+    fa = mean_answer_nll(ed_auto, forget, tok, device)
+    ra = mean_answer_nll(ed_auto, retain_eval, tok, device)
     probe_a = linear_probe_acc(ed_auto, tok, forget, retain_eval, device)
     del ed_auto; torch.cuda.empty_cache()
     results["label_light"] = {"forget_nll": round(fa, 3), "forget_d": round(fa - f0, 3),

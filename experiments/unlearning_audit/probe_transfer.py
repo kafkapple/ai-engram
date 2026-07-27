@@ -15,8 +15,8 @@ import json, os, sys
 import numpy as np
 import torch
 
-from tests.test_tofu_unlearn import BASE_ID, N_RETAIN_EVAL  # noqa: E402
-from experiments.unlearning_audit.common import edit_model, embed
+from experiments.unlearning_audit.tofu import BASE_ID, N_RETAIN_EVAL  # noqa: E402
+from experiments.unlearning_audit.tofu import edit_model, embed
 
 OUT = os.path.join(os.path.dirname(__file__), "results")
 N_TOTAL = 4000

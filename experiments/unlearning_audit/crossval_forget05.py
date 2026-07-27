@@ -25,15 +25,14 @@ import sys
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
 
-from tests.test_tofu_unlearn import (  # noqa: E402
-    BASE_ID, IGNORE, _QAData, _make_collate, _mean_answer_nll, ADAPT_ALPHA, ADAPT_P,
+from experiments.unlearning_audit.tofu import (  # noqa: E402
+    BASE_ID, cpu_state_dict, edit_model, mean_answer_nll,
 )
-from experiments.unlearning_audit.entity_control import finetune, relearn_curve, EF_STEPS  # noqa: E402
+from experiments.unlearning_audit.entity_control import relearn_curve, EF_STEPS  # noqa: E402
+from experiments.unlearning_audit.tofu import finetune
 from experiments.unlearning_audit.generation import _chat_ids, item_nlls, greedy_decode, degenerate  # noqa: E402
 from experiments.unlearning_audit.length_match import pick_length_matched  # noqa: E402
-from engram import EditorConfig, EngramEditor, compose, count_ratio, weight_norm  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(__file__), "results")
 GOLD_ID = "open-unlearning/tofu_Llama-3.2-1B-Instruct_retain95"
@@ -69,27 +68,18 @@ def main():
         id_, torch_dtype=torch.bfloat16, attn_implementation="sdpa").to(device)
 
     model = load(BASE_ID).eval()
-    S_O = round(_mean_answer_nll(model, ev_flat, tok, device), 3)
+    S_O = round(mean_answer_nll(model, ev_flat, tok, device), 3)
 
-    ed = EngramEditor(model, EditorConfig(storage_device=torch.device(device)))
-    dl = lambda rows: DataLoader(_QAData(rows, tok), batch_size=8, collate_fn=_make_collate(tok.pad_token_id))
-    feats = lambda b: {"input_ids": b["input_ids"].to(device), "attention_mask": b["attention_mask"].to(device)}
-    mask = lambda b: b["labels"] != IGNORE
-    g_total = ed.collect_statistics(dl(total), batch_fn=feats, mask_fn=mask)
-    g_forget = ed.collect_statistics(dl(forget), batch_fn=feats, mask_fn=mask)
-    eng = ed.compute_engram_weights(g_forget, g_total)
-    del g_forget, g_total
-    torch.cuda.empty_cache()
-    edited = ed.apply(eng, alpha=ADAPT_ALPHA, scale=compose(count_ratio(1.0), weight_norm(ADAPT_P))).eval()
-    edited_sd = {k: v.detach().cpu().clone() for k, v in edited.state_dict().items()}
-    edited_static = round(_mean_answer_nll(edited, ev_flat, tok, device), 3)
-    del edited, eng
+    edited = edit_model(model, forget, total, tok, device)
+    edited_sd = cpu_state_dict(edited)
+    edited_static = round(mean_answer_nll(edited, ev_flat, tok, device), 3)
+    del edited
     torch.cuda.empty_cache()
 
     gold = load(GOLD_ID)
-    gold_sd = {k: v.detach().cpu().clone() for k, v in gold.state_dict().items()}
+    gold_sd = cpu_state_dict(gold)
     gold_ef = finetune(gold, ef_flat, tok, device, EF_STEPS)
-    gold_ef_sd = {k: v.detach().cpu().clone() for k, v in gold_ef.state_dict().items()}
+    gold_ef_sd = cpu_state_dict(gold_ef)
     del gold, gold_ef
     torch.cuda.empty_cache()
 

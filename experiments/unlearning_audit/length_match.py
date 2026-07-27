@@ -26,7 +26,7 @@ import sys
 import numpy as np
 import torch
 
-from tests.test_tofu_unlearn import BASE_ID, _mean_answer_nll  # noqa: E402
+from experiments.unlearning_audit.tofu import BASE_ID, mean_answer_nll  # noqa: E402
 from experiments.unlearning_audit.entity_control import finetune, EF_STEPS  # noqa: E402
 from experiments.unlearning_audit.generation import (  # noqa: E402
     _chat_ids, item_nlls, greedy_decode, token_f1, degenerate, cluster_boot_ci,

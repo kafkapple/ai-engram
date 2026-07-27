@@ -17,12 +17,11 @@ import torch
 from torch.utils.data import DataLoader
 
 # module-level names only run on import (no test executes)
-from tests.test_tofu_unlearn import (  # noqa: E402
-    BASE_ID, N_TOTAL, N_RETAIN_EVAL, IGNORE,
-    _QAData, _make_collate, _mean_answer_nll,
+from experiments.unlearning_audit.tofu import (  # noqa: E402
+    BASE_ID, N_TOTAL, N_RETAIN_EVAL, collect_engram, mean_answer_nll,
     ADAPT_ALPHA, ADAPT_P,
 )
-from engram import EditorConfig, EngramEditor, compose, count_ratio, weight_norm  # noqa: E402
+from engram import compose, count_ratio, weight_norm  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(__file__), "results")
 
@@ -63,24 +62,11 @@ def main():
     retain = load_dataset("locuslab/TOFU", "retain_perturbed")["train"]
     total = load_dataset("locuslab/TOFU", "full")["train"].shuffle(seed=0).select(range(N_TOTAL))
 
-    editor = EngramEditor(base, EditorConfig(storage_device=torch.device(device)))
-
-    def covdl(ds):
-        return DataLoader(_QAData(ds, tok), batch_size=8, collate_fn=_make_collate(tok.pad_token_id))
-
-    def feats(b):
-        return {"input_ids": b["input_ids"].to(device), "attention_mask": b["attention_mask"].to(device)}
-    mask_fn = lambda b: b["labels"] != IGNORE
-
-    # collect ONCE over all layers
-    g_forget = editor.collect_statistics(covdl(forget), batch_fn=feats, mask_fn=mask_fn)
-    g_total = editor.collect_statistics(covdl(total), batch_fn=feats, mask_fn=mask_fn)
-    engram = editor.compute_engram_weights(g_forget, g_total)
-    del g_forget, g_total; torch.cuda.empty_cache()
+    editor, engram = collect_engram(base, forget, total, tok, device)
 
     retain_eval = retain.select(range(min(N_RETAIN_EVAL, len(retain))))
-    f0 = _mean_answer_nll(base, forget, tok, device)
-    r0 = _mean_answer_nll(base, retain_eval, tok, device)
+    f0 = mean_answer_nll(base, forget, tok, device)
+    r0 = mean_answer_nll(base, retain_eval, tok, device)
     print(f"[base] forget {f0:.3f} | retain {r0:.3f}")
 
     adaptive = compose(count_ratio(1.0), weight_norm(ADAPT_P))  # paper's best condition
@@ -89,8 +75,8 @@ def main():
         n_layers = "all" if suffixes is None else sum(
             1 for k in engram.layers if any(k.endswith(s) for s in suffixes))
         edited = editor.apply(engram, alpha=ADAPT_ALPHA, scale=restrict(adaptive, suffixes)).eval()
-        f1 = _mean_answer_nll(edited, forget, tok, device)
-        r1 = _mean_answer_nll(edited, retain_eval, tok, device)
+        f1 = mean_answer_nll(edited, forget, tok, device)
+        r1 = mean_answer_nll(edited, retain_eval, tok, device)
         del edited; torch.cuda.empty_cache()
         row = {"group": name, "n_layers": n_layers,
                "forget_d": round(f1 - f0, 3), "retain_d": round(r1 - r0, 3),

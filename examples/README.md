@@ -1,5 +1,11 @@
 # Examples
 
+## Audit walkthrough
+
+- [`ai_engram_tofu_unlearning_audit.ipynb`](ai_engram_tofu_unlearning_audit.ipynb):
+  beginner-friendly theory, minimal edit, full suppression-vs-erasure audit
+  sequence, saved-result interpretation, and optional GPU execution.
+
 ## Quickstart — current API (runs in Colab)
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jeakwon/ai-engram/blob/main/examples/quick_ai_engram_qwen3.ipynb)
