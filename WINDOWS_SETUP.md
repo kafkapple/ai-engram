@@ -74,15 +74,23 @@ conda activate ai-engram && python win_prefetch_assets.py  # 1B 3종 + TOFU 4 co
 
 ## 5. VRAM 실행 가능성 (12GB 기준)
 
-산식: bf16 가중치 2B/param, full-param AdamW = 가중치 + grad + state 2개 ≈ **8B/param**.
+**병목은 가중치가 아니라 공분산 행렬이다.** `CovarianceCollector`가 대상 Linear마다 `float32` D×D를 잡고(`collectors.py:181`), 편집 시 forget·total 두 벌이 동시에 살아 있다. `target_modules=None`(기본)은 모든 Linear가 대상.
 
-| 실험 유형 | 해당 스크립트 | 1B (1.24B param) | 3B (3.21B param) |
+| 경로 | 지배 항목 | 1B (hidden 2048 / ffn 8192 / 16층) | 3B (hidden 3072 / ffn 8192 / 28층) |
 |---|---|---|---|
-| 추론·편집만 | `alpha_sweep`, `ablation_targets`, `probe_transfer`, `selfsup_poc`, `sham_scr` | ✅ 2.3 GiB | ✅ 6.0 GiB (단일 로딩) |
-| 재학습 공격·EF 파인튜닝 | `entity_control`, `relearn_attack`, `e2_v2`, `c3_lenmatch`, `xval_*` | ⚠️ 9.2 GiB + 활성값 = 경계 | ❌ 23.9 GiB |
+| 편집(통계 수집→apply) | 공분산 2벌 | **12.1 GiB 실측** (260814 T2a, 12.3 중) | 🟡 ~29 GiB 추정 |
+| full-param AdamW 재학습 | 옵티마이저 상태 | ~9.2 GiB (가중치+grad+state 2개) | ~23.9 GiB |
 
-- 1B 경계 완화책: `BS` 8→4 · `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` · 스크립트에 이미 있는 `del`+`empty_cache()` 유지.
-- 🟡 1B 경계 판정은 산식 기반 추정 — 실측 미완(T2a 스모크로 확인 예정).
+- 3B 추정 근거 = 구조비 스케일링. 층당 Σd² 는 1B `6×2048² + 8192²`, 3B `6×3072² + 8192²` → 전체 **2.35배**. 실측 앵커(1B 12.1 GiB)에 적용.
+- **`storage_device="cpu"` 가 정식 완화책** — `EditorConfig`가 "covariances don't fit in VRAM (large/wide models)" 용도로 문서화한 옵션. 공분산을 시스템 RAM으로 내리면 3B **편집**은 가능해지나, WSL 기본 RAM 15GB로는 부족 → `.wslconfig`에 `memory=32GB` 필요.
+- 재학습 경로는 `storage_device`와 무관 — 옵티마이저 상태 문제라 3B는 여전히 불가.
+- 1B 완화책: `BS` 8→4 · `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` · 스크립트 내 `del`+`empty_cache()` 유지.
+
+### 실행 시간 배율 (260814 관측)
+
+- T2a NLL 프록시: gpu03 **~6분** → 3060 **87분+ 미완**(CPU 83분 소모, GPU 100%) = **15배 이상**.
+- gpu03 기준 소요시간을 그대로 읽지 말 것. "~1일" 실험은 개인 서버에서 수일 규모.
+- 원인 추정 🟡: 연산성능 격차 + VRAM 12.1/12.3 상시 점유로 인한 할당기 압박 + WSL 유효 1 vCPU.
 
 ### 재개 우선순위별 판정
 
