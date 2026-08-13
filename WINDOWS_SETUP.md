@@ -49,6 +49,23 @@ conda activate ai-engram && python win_prefetch_assets.py  # 1B 3종 + TOFU 4 co
 #                          python win_prefetch_assets.py --with-3b   # 3B 추론용 추가시
 ```
 
+### 검증 결과 (260814 실측, `_boot2.log`)
+
+- `engram 0.8.0 | torch 2.12.1+cu130 | cuda True | dev NVIDIA GeForce RTX 3060`
+- `vram free/total: 11.0/12.0 GiB` · `bf16 supported: True`
+- T0 CPU 유닛테스트 **52 passed, 1 skipped** (24.1s)
+
+### 버전 드리프트 (gpu03 대비)
+
+| 패키지 | gpu03 (결과 생성 시점) | 개인 서버 (260814) |
+|---|---|---|
+| python / torch / numpy | 3.11.15 / 2.12.1 / 2.4.6 | 동일 |
+| transformers | 5.13.0 | **5.15.0** |
+| datasets | 5.0.0 | **5.0.1** |
+
+- 기존 `_repro_out/` 수치와 직접 비교하는 재실행에는 핀 권장: `pip install "transformers==5.13.0" "datasets==5.0.0"`.
+- 신규 실험(P2'·P4')은 드리프트 무관 — 핀 불요.
+
 환경변수 (기본값은 스크립트 내장, 필요시만 override):
 
 - `REPO_ROOT=~/dev/ai-engram` · `REPRO_ROOT=~/dev/ai-engram-repro`
@@ -87,6 +104,8 @@ conda activate ai-engram && python win_prefetch_assets.py  # 1B 3종 + TOFU 4 co
 
 ## 6. 함정
 
+- **conda-forge `python=3.11` env에는 pip이 없음** — `pip install`이 조용히 `/usr/bin/pip`으로 빠져 torch 전체가 `~/.local/lib/python3.10`에 설치됨(260813 실제 발생). 부트스트랩은 `pip`을 명시 생성하고 `$ENV_PREFIX/bin/python -m pip`으로만 호출.
+- `conda activate`는 비대화형 셸에서 **exit 0을 반환하고도 PATH를 안 바꿀 수 있음** — 인터프리터는 절대경로로 바인딩할 것.
 - WSL2는 `nvidia-smi`를 `/usr/lib/wsl/lib`에 두고 PATH에 넣지 않음 — 부트스트랩이 PATH·LD_LIBRARY_PATH에 주입.
 - WSL에 `gh` 로그인 없음 → private repo(`ai-engram-repro`) push 전에 `gh auth login` 1회 필요. 최초 배포는 mac→WSL rsync로 처리됨.
 - `rouge_score`·`scikit-learn`은 `pyproject.toml` 의존성에 없음 — 미설치 시 T2b가 조용히 skip.
