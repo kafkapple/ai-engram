@@ -81,16 +81,38 @@ conda activate ai-engram && python win_prefetch_assets.py  # 1B 3종 + TOFU 4 co
 | 편집(통계 수집→apply) | 공분산 2벌 | **12.1 GiB 실측** (260814 T2a, 12.3 중) | 🟡 ~29 GiB 추정 |
 | full-param AdamW 재학습 | 옵티마이저 상태 | ~9.2 GiB (가중치+grad+state 2개) | ~23.9 GiB |
 
-- 3B 추정 근거 = 구조비 스케일링. 층당 Σd² 는 1B `6×2048² + 8192²`, 3B `6×3072² + 8192²` → 전체 **2.35배**. 실측 앵커(1B 12.1 GiB)에 적용.
-- **`storage_device="cpu"` 가 정식 완화책** — `EditorConfig`가 "covariances don't fit in VRAM (large/wide models)" 용도로 문서화한 옵션. 공분산을 시스템 RAM으로 내리면 3B **편집**은 가능해지나, WSL 기본 RAM 15GB로는 부족 → `.wslconfig`에 `memory=32GB` 필요.
-- 재학습 경로는 `storage_device`와 무관 — 옵티마이저 상태 문제라 3B는 여전히 불가.
+- 3B 추정 근거 = 구조비 스케일링. 층당 Σd² 는 1B `6×2048² + 8192²`, 3B `6×3072² + 8192²` → 전체 **2.35배**. 실측 앵커(1B 12.1 GiB)에 적용. 대상 모듈이 전 Linear(lm_head·q·k·v·o·gate·up·down)인 것은 `sham_scr.json`의 `delta_parity.layer_names`로 확인.
+- `storage_device="cpu"` = `EditorConfig`가 "covariances don't fit in VRAM" 용도로 문서화한 정식 옵션. 공분산을 시스템 RAM으로 내린다.
+  - 🔴 **다만 이 박스에선 3B를 못 살린다.** 호스트 물리 RAM **31.8GB**(260814 `systeminfo` 실측), WSL 기본 배정 15GB. Windows 몫을 남기면 상한이 **~24GB**인데 3B 공분산 추정치 ~29GB를 못 담는다.
+  - `.wslconfig`의 `memory=`는 **VRAM이 아니라 VM에 줄 시스템 RAM** — GPU 12GB와 무관한 별개 풀이다. 32GB 지정은 호스트 전량 할당이라 금지.
+- 재학습 경로는 `storage_device`와 무관 — 옵티마이저 상태 문제.
+- ⇒ **3B는 편집·재학습 모두 이 서버에서 불가.** 좁힌 `target_modules`(예: MLP만)로는 메모리가 내려가지만 편집 정의가 바뀌어 gpu03 결과와 비교 불가.
 - 1B 완화책: `BS` 8→4 · `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` · 스크립트 내 `del`+`empty_cache()` 유지.
 
-### 실행 시간 배율 (260814 관측)
+### T2a 스모크 실측 (260814, `_t2a.log`)
 
-- T2a NLL 프록시: gpu03 **~6분** → 3060 **87분+ 미완**(CPU 83분 소모, GPU 100%) = **15배 이상**.
+```
+[TOFU forget10 | answer-token NLL]
+  base                : forget 0.132 | retain 0.139
+  plain   (a=0.6)    : forget 2.100 (Δ+1.968) | retain 0.703 (Δ+0.565)
+  adaptive(a=1.0,p=1): forget 2.180 (Δ+2.048) | retain 0.588 (Δ+0.449)
+1 passed in 14599.73s (4:03:19)
+```
+
+- gpu03 앵커 대조(`_repro_out/sham_scr.json`): `base_retain` 0.139 = **완전 일치** · `S_O_original` 0.135 vs 0.132(2% 차).
+- 🟡 편집 후 값(`static.edited` 2.538 vs 2.180)은 **직접 비교 불가** — sham_scr과 T2a는 평가 대상 집합이 다름. 완전 재현 확인은 `gpu03_sham_scr.py` 재실행 필요.
+
+### 실행 시간 (260814 관측)
+
+| 지표 | 값 |
+|---|---|
+| pytest wall clock | 4시간 03분 |
+| 게스트 elapsed / CPU time | ~88분 / 83분 |
+| gpu03 동일 테스트 | ~6분 |
+
+- 연산 기준 **~15배**, 벽시계 기준 **~40배**.
+- 🟡 격차 원인 = WSL2 VM 유휴 서스펜드 추정(게스트 시계만 정지). 장시간 런은 벽시계가 더 늘어난다고 보고 계획할 것.
 - gpu03 기준 소요시간을 그대로 읽지 말 것. "~1일" 실험은 개인 서버에서 수일 규모.
-- 원인 추정 🟡: 연산성능 격차 + VRAM 12.1/12.3 상시 점유로 인한 할당기 압박 + WSL 유효 1 vCPU.
 
 ### 재개 우선순위별 판정
 
@@ -118,4 +140,4 @@ conda activate ai-engram && python win_prefetch_assets.py  # 1B 3종 + TOFU 4 co
 - WSL에 `gh` 로그인 없음 → private repo(`ai-engram-repro`) push 전에 `gh auth login` 1회 필요. 최초 배포는 mac→WSL rsync로 처리됨.
 - `rouge_score`·`scikit-learn`은 `pyproject.toml` 의존성에 없음 — 미설치 시 T2b가 조용히 skip.
 - gpu03는 Blackwell(sm_120)이라 cu128+ 휠 강제였으나, 3060은 Ampere(sm_86)라 제약 없음.
-- WSL RAM 15GB = 호스트의 기본 50% 배분. 상향은 `%USERPROFILE%\.wslconfig`에 `memory=24GB` 추가 후 `wsl --shutdown`.
+- WSL RAM 15GB = 호스트 31.8GB의 기본 50% 배분. 상향 상한은 `memory=24GB`(`%USERPROFILE%\.wslconfig` + `wsl --shutdown`) — 그 이상은 Windows가 굶는다. VRAM과는 무관한 별개 풀.
