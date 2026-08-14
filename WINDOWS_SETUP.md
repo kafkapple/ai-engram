@@ -81,12 +81,18 @@ conda activate ai-engram && python win_prefetch_assets.py  # 1B 3종 + TOFU 4 co
 | 편집(통계 수집→apply) | 공분산 2벌 | **12.1 GiB 실측** (260814 T2a, 12.3 중) | 🟡 ~29 GiB 추정 |
 | full-param AdamW 재학습 | 옵티마이저 상태 | ~9.2 GiB (가중치+grad+state 2개) | ~23.9 GiB |
 
-- 3B 추정 근거 = 구조비 스케일링. 층당 Σd² 는 1B `6×2048² + 8192²`, 3B `6×3072² + 8192²` → 전체 **2.35배**. 실측 앵커(1B 12.1 GiB)에 적용. 대상 모듈이 전 Linear(lm_head·q·k·v·o·gate·up·down)인 것은 `sham_scr.json`의 `delta_parity.layer_names`로 확인.
-- `storage_device="cpu"` = `EditorConfig`가 "covariances don't fit in VRAM" 용도로 문서화한 정식 옵션. 공분산을 시스템 RAM으로 내린다.
-  - 🔴 **다만 이 박스에선 3B를 못 살린다.** 호스트 물리 RAM **31.8GB**(260814 `systeminfo` 실측), WSL 기본 배정 15GB. Windows 몫을 남기면 상한이 **~24GB**인데 3B 공분산 추정치 ~29GB를 못 담는다.
-  - `.wslconfig`의 `memory=`는 **VRAM이 아니라 VM에 줄 시스템 RAM** — GPU 12GB와 무관한 별개 풀이다. 32GB 지정은 호스트 전량 할당이라 금지.
-- 재학습 경로는 `storage_device`와 무관 — 옵티마이저 상태 문제.
-- ⇒ **3B는 편집·재학습 모두 이 서버에서 불가.** 좁힌 `target_modules`(예: MLP만)로는 메모리가 내려가지만 편집 정의가 바뀌어 gpu03 결과와 비교 불가.
+- 대상 모듈은 전 Linear(lm_head·q·k·v·o·gate·up·down) — `sham_scr.json`의 `delta_parity.layer_names`로 확인. `target_modules=None`이 기본이라 모든 Linear가 걸린다.
+- 3B 값은 **유도치**(실측 아님). 층당 Σd² 가 1B `6×2048² + 8192²`, 3B `6×3072² + 8192²` → 전체 **2.35배**. 1B 실측 12.1 GiB에서 가중치 2.3 GiB를 빼면 공분산 2벌 ≈ 9.5 GiB → 3B 공분산 ≈ **22.3 GiB**.
+
+**`storage_device="cpu"` 로 3B 편집은 살릴 수 있다** (아래 근거 3개가 모두 성립할 때):
+
+1. 공분산 누적만 시스템 RAM으로 내려간다 — `EditorConfig`가 "covariances don't fit in VRAM" 용도로 문서화한 옵션.
+2. pinv는 **층별로 모델 디바이스에 올려 계산**한다(`editor.py:225` `dev = self._model_device`) — 전량이 아니라 한 쌍씩. 최대 쌍이 8192²×4B×2 = 512MB라 VRAM 피크는 가중치 6.0 GiB + 소량.
+3. RAM 22.3 GiB < WSL 상한 24GB. **여유 ~1.7GB로 매우 빠듯** — 파이썬·데이터셋 오버헤드까지 넣으면 OOM 가능. 🟡 유도치 기반이라 실측 전엔 확정 아님.
+
+- `.wslconfig`의 `memory=`는 **VRAM이 아니라 VM에 줄 시스템 RAM** — GPU 12GB와 무관한 별개 풀. 호스트 물리 RAM은 31.8GB(`systeminfo` 실측)이므로 상한은 24GB, 32GB 지정은 Windows를 굶긴다.
+- **재학습 경로는 `storage_device`와 무관** — 옵티마이저 상태 문제라 3B는 확정 불가(23.9 GiB vs VRAM 12GB).
+- ⇒ **3B 편집 = 조건부 가능 / 3B 재학습 = 불가.** `xval_3b`·강도매칭 C3L은 재학습을 포함하므로 P1' 판정은 불변.
 - 1B 완화책: `BS` 8→4 · `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` · 스크립트 내 `del`+`empty_cache()` 유지.
 
 ### T2a 스모크 실측 (260814, `_t2a.log`)
