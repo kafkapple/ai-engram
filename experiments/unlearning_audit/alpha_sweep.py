@@ -22,7 +22,7 @@ from experiments.unlearning_audit.tofu import (  # noqa: E402
 )
 from engram import compose, count_ratio, weight_norm  # noqa: E402
 
-OUT = os.path.join(os.path.dirname(__file__), "results")
+OUT = os.environ.get("AUDIT_RESULTS") or os.path.join(os.path.dirname(__file__), "results")
 N_TOTAL = 4000
 STEPS, LR, BS, EVAL_EVERY = 40, 2e-5, 8, 20
 SEEDS = [0, 1]

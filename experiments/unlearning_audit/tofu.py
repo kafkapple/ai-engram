@@ -14,7 +14,8 @@ from torch.utils.data import Dataset
 
 from engram import EditorConfig, EngramEditor, compose, count_ratio, weight_norm
 
-RESULTS = Path(__file__).with_name("results")
+# AUDIT_RESULTS redirects outputs so re-runs never overwrite the committed results/.
+RESULTS = Path(os.environ.get("AUDIT_RESULTS") or Path(__file__).with_name("results"))
 CHECKPOINTS = Path(
     os.environ.get("CHECKPOINT_ROOT", Path(__file__).with_name("checkpoints"))
 ) / "ai_engram"

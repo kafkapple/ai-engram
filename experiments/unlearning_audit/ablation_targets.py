@@ -23,7 +23,7 @@ from experiments.unlearning_audit.tofu import (  # noqa: E402
 )
 from engram import compose, count_ratio, weight_norm  # noqa: E402
 
-OUT = os.path.join(os.path.dirname(__file__), "results")
+OUT = os.environ.get("AUDIT_RESULTS") or os.path.join(os.path.dirname(__file__), "results")
 
 # Llama-3.2 decoder module suffixes per group. None = all-linear (the full-edit baseline).
 GROUPS = {

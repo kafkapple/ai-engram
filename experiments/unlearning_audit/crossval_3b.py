@@ -32,7 +32,7 @@ from experiments.unlearning_audit.tofu import finetune
 from experiments.unlearning_audit.generation import _chat_ids, item_nlls, greedy_decode, degenerate  # noqa: E402
 from experiments.unlearning_audit.length_match import pick_length_matched  # noqa: E402
 
-OUT = os.path.join(os.path.dirname(__file__), "results")
+OUT = os.environ.get("AUDIT_RESULTS") or os.path.join(os.path.dirname(__file__), "results")
 BASE_3B = "open-unlearning/tofu_Llama-3.2-3B-Instruct_full"
 GOLD_3B = "open-unlearning/tofu_Llama-3.2-3B-Instruct_retain90"
 N_TOTAL = 4000

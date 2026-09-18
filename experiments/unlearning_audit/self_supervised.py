@@ -27,7 +27,7 @@ from experiments.unlearning_audit.tofu import (
     mean_answer_nll,
 )
 
-OUT = os.path.join(os.path.dirname(__file__), "results")
+OUT = os.environ.get("AUDIT_RESULTS") or os.path.join(os.path.dirname(__file__), "results")
 N_TOTAL = 4000
 SEED = 0
 

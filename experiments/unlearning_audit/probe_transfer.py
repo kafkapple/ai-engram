@@ -18,7 +18,7 @@ import torch
 from experiments.unlearning_audit.tofu import BASE_ID, N_RETAIN_EVAL  # noqa: E402
 from experiments.unlearning_audit.tofu import edit_model, embed
 
-OUT = os.path.join(os.path.dirname(__file__), "results")
+OUT = os.environ.get("AUDIT_RESULTS") or os.path.join(os.path.dirname(__file__), "results")
 N_TOTAL = 4000
 
 

@@ -25,7 +25,31 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest"]
 docs = ["mkdocs-material", "mkdocstrings[python]", "black"]
-audit = ["datasets", "matplotlib", "numpy", "scikit-learn"]
+audit = ["datasets", "matplotlib", "numpy", "scikit-learn", "rouge_score"]
+
+# Audit environment pins (uv). Versions mirror the gpu03 env that produced
+# experiments/unlearning_audit/results (environment.gpu03.yml, python 3.11.15).
+# torch: gpu03 used the PyPI cu130 build; Olaf driver 570 caps at CUDA 12.8, so the
+# same version is taken from the cu129 index (CUDA 12 minor-version compatibility).
+# Library users are unaffected: these only apply to `uv lock`/`uv sync` here.
+[tool.uv]
+environments = ["python_version >= '3.11'"]
+constraint-dependencies = [
+    "torch==2.12.1",
+    "transformers==5.13.0",
+    "datasets==5.0.0",
+    "numpy==2.4.6",
+    "scikit-learn==1.9.0",
+    "rouge_score==0.1.2",
+]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu129", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu129"
+url = "https://download.pytorch.org/whl/cu129"
+explicit = true
 
 [project.urls]
 Homepage = "https://github.com/jeakwon/ai-engram"

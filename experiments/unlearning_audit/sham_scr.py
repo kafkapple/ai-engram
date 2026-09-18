@@ -41,7 +41,7 @@ from experiments.unlearning_audit.tofu import (  # noqa: E402
 from experiments.unlearning_audit.entity_control import relearn_curve  # noqa: E402  (same 40-step/eval protocol)
 from engram import EditorConfig, EngramEditor, compose, count_ratio, weight_norm  # noqa: E402
 
-OUT = os.path.join(os.path.dirname(__file__), "results")
+OUT = os.environ.get("AUDIT_RESULTS") or os.path.join(os.path.dirname(__file__), "results")
 CKPT = CHECKPOINTS
 GOLD_ID = "open-unlearning/tofu_Llama-3.2-1B-Instruct_retain90"
 N_TOTAL = 4000

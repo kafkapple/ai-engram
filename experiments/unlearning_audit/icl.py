@@ -37,7 +37,7 @@ from experiments.unlearning_audit.tofu import (  # noqa: E402
 )
 from experiments.unlearning_audit.entity_control import finetune, EF_STEPS  # noqa: E402
 
-OUT = os.path.join(os.path.dirname(__file__), "results")
+OUT = os.environ.get("AUDIT_RESULTS") or os.path.join(os.path.dirname(__file__), "results")
 CKPT = CHECKPOINTS
 GOLD_ID = "open-unlearning/tofu_Llama-3.2-1B-Instruct_retain90"
 PER_AUTHOR, N_AUTHORS, SPLIT = 20, 20, 12

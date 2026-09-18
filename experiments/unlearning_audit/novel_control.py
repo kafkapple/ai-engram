@@ -21,7 +21,7 @@ from experiments.unlearning_audit.tofu import (  # noqa: E402
 )
 from experiments.unlearning_audit.tofu import cpu_state_dict, edit_model
 
-OUT = os.path.join(os.path.dirname(__file__), "results")
+OUT = os.environ.get("AUDIT_RESULTS") or os.path.join(os.path.dirname(__file__), "results")
 GOLD_ID = "open-unlearning/tofu_Llama-3.2-1B-Instruct_retain90"
 N_TOTAL = 4000
 STEPS, LR, BS, EVAL_EVERY = 40, 2e-5, 8, 10
