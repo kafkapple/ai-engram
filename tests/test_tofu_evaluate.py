@@ -56,7 +56,7 @@ def test_tofu_evaluate_overall():
     if not torch.cuda.is_available():
         pytest.skip("needs a CUDA GPU")
 
-    import _tofu_evaluate as T
+    from tests import _tofu_evaluate as T  # tests/ is a package since 36c233f
     from datasets import load_dataset
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
