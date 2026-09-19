@@ -54,7 +54,11 @@ def relearn_curve(model, train_rows, f_eval, r_eval, tok, device):
 
 
 def main():
+    import argparse
     from datasets import load_dataset
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--unlearned", help="HF id of a public unlearned checkpoint to attack instead of the engram edit")
+    args = parser.parse_args()
     from transformers import AutoModelForCausalLM, AutoTokenizer
     device = "cuda"
     tok = AutoTokenizer.from_pretrained(BASE_ID)
@@ -73,9 +77,12 @@ def main():
             id_, torch_dtype=torch.bfloat16, attn_implementation="sdpa").to(device)
 
     # edited: build from base, then relearn
-    base = load(BASE_ID).eval()
-    edited = edit_model(base, forget, full, tok, device)
-    del base; torch.cuda.empty_cache()
+    if args.unlearned:
+        edited = load(args.unlearned).eval()
+    else:
+        base = load(BASE_ID).eval()
+        edited = edit_model(base, forget, full, tok, device)
+        del base; torch.cuda.empty_cache()
     edited_curve = relearn_curve(edited, train_rows, f_eval, r_eval, tok, device)
     del edited; torch.cuda.empty_cache()
 
@@ -99,7 +106,9 @@ def main():
            "edited_half_recovery_step": half_recovery(edited_curve),
            "gold_half_recovery_step": half_recovery(gold_curve)}
     print(json.dumps(res, indent=2))
-    with open(f"{OUT}/relearn_attack.json", "w") as fp:
+    tag = "_" + args.unlearned.split("forget10_")[-1] if args.unlearned else ""
+    res["unlearned"] = args.unlearned or "ai_engram_adaptive_a1"
+    with open(f"{OUT}/relearn_attack{tag}.json", "w") as fp:
         json.dump(res, fp, indent=2)
     er, gr = res["edited_half_recovery_step"], res["gold_half_recovery_step"]
     print(f"\n[verdict] edited half-recovery step={er}  vs  gold={gr}")
