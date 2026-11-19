@@ -1,0 +1,27 @@
+<p style="margin:8px 0;padding:8px 12px;border:1px solid #888;border-radius:8px"><a href="index.html">⬅ PoC 대시보드</a> · <b>➡ 최종 감사 보고서 (260711):</b> <a href="final_report_260711.html">final_report_260711.html</a> — 3중 착시 스토리·전 실험 원장·회고</p>
+<meta charset="utf-8"><title>ai-engram reproduction</title>
+<style>body{font:14px/1.5 system-ui;max-width:1000px;margin:2rem auto;padding:0 1rem}table{border-collapse:collapse;margin:1rem 0}td,th{border:1px solid #ccc;padding:4px 10px}img{max-width:100%;border:1px solid #eee;margin:.5rem 0}h2{margin-top:2rem}.ok{color:#127c2b}.bad{color:#b00}code{background:#f4f4f4;padding:1px 4px}</style>
+<h1>ai-engram — reproduction report</h1>
+<h2>Quantitative — TOFU forget10 / Llama-3.2-1B</h2>
+<table><tr><th>condition</th><th>reproduced</th><th>paper</th><th>|Δ|</th></tr>
+<tr><td>gold</td><td class="ok">0.998</td><td>0.998</td><td>0.000</td></tr>
+<tr><td>plain (a=0.6)</td><td class="ok">0.712</td><td>0.698</td><td>0.014</td></tr>
+<tr><td>adaptive-norm (a=1,p=1)</td><td class="ok">0.813</td><td>0.818</td><td>0.005</td></tr>
+</table><p>Green = within ±0.02 of paper.</p>
+<h3>NLL proxy (forget should rise, retain hold)</h3><pre><code>Generating train split: 100%|██████████| 400/400 [00:00<00:00, 67194.87 examples/s]
+
+Generating train split:   0%|          | 0/4000 [00:00<?, ? examples/s]
+Generating train split: 100%|██████████| 4000/4000 [00:00<00:00, 303725.99 examples/s]
+
+[TOFU forget10 | answer-token NLL]
+  base                : forget 0.132 | retain 0.139
+  plain   (a=0.6)    : forget 2.133 (Δ+2.001) | retain 0.711 (Δ+0.573)
+  adaptive(a=1.0,p=1): forget 2.184 (Δ+2.052) | retain 0.601 (Δ+0.462)
+.
+
+======================== 1 passed in 631.34s (0:10:31) =========================</code></pre>
+<h3>T0 CPU unit tests</h3><pre><code>.......s.............................................                    [100%]
+52 passed, 1 skipped in 8.81s</code></pre>
+<h2>Qualitative — figures from executed notebooks</h2>
+<h3>quick_ai_engram_qwen3.executed</h3>
+<p><em>(no image outputs)</em></p>
