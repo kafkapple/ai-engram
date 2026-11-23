@@ -25,6 +25,7 @@ W_engram = W · Σ_target · pinv(Σ_total)
 - **HF-native** — Llama, Mistral, Qwen, Gemma, Phi … and GPT-2 (`Conv1D`) out of the box.
 - **Affine-correct** — automatic bias absorption for bias-bearing layers.
 - **Tunable** — per-layer edit scaling is pluggable: the paper's `n/N` (default), relative weight-norm, effective rank, or your own.
+- **Fast and deterministic** — the inverse is a float64 symmetric eigendecomposition: **11.6x faster end-to-end** on TOFU Llama-3.2-1B (158.5 s → 13.6 s for 113 layers), up to **65x** on wide MLP layers, with a keep-set that no longer shifts between runs or dtypes. Statistics files are **half the size** (symmetric packing), and layers that read the same tensor — `q`/`k`/`v`, `gate`/`up` — share one covariance end to end, so each trio costs one `x^T x`, one stored tensor and one eigendecomposition instead of three — **17%** off covariance memory and file size, **43%** fewer decompositions (197 → 113 on Qwen3-0.6B), every number bit-identical.
 
 > Statistics collection, closed-form **extraction**, and **editing** (`apply` / `edit`) are all here, and reproduce TOFU unlearning (see [Validation](#validation)).
 
@@ -91,10 +92,10 @@ print("after :", ask(edited, "Where is the Eiffel Tower?"))
 | step | what | cost |
 |---|---|---|
 | 1. collect | forward pre-hooks accumulate the **mean** `xᵀx` + sample count per layer | one forward pass, no backward |
-| 2. compute | projection `P = W · C_target · pinv(C_total)` | one pseudo-inverse per layer |
+| 2. compute | projection `P = W · C_target · pinv(C_total)` | one eigendecomposition per layer, applied in factored form |
 | 3. apply | `W ← W − α · f_l · P` with a pluggable per-layer scaling `f_l` | a single subtraction |
 
-Efficient by construction — forward-only hooks, magnitude-bounded running-mean accumulation, CPU/GPU split (covariances on `storage_device`), a `float32` solve cast back to the model dtype, and answer-token masking. The per-layer edit weighting `f_l` is pluggable (`count_ratio` default = the paper's `n/N`, `weight_norm`, `effective_rank`, …). Handles `nn.Linear`, GPT-2 `Conv1D` (a transposed linear), and masked variants; full details in the [Guide](https://jeakwon.github.io/ai-engram/guide/).
+Efficient by construction — forward-only hooks, magnitude-bounded running-mean accumulation, CPU/GPU split (covariances on `storage_device`), symmetric packing on disk, a float64 eigendecomposition applied in factored form (so the `D×D` inverse is never built), and answer-token masking. The per-layer edit weighting `f_l` is pluggable (`count_ratio` default = the paper's `n/N`, `weight_norm`, `effective_rank`, …). Handles `nn.Linear`, GPT-2 `Conv1D` (a transposed linear), and masked variants; full details in the [Guide](https://jeakwon.github.io/ai-engram/guide/).
 
 ### Configuration (`EditorConfig`)
 

@@ -4,6 +4,129 @@ All notable changes to **ai-engram** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); the project is pre-1.0, so minor
 (`0.x`) releases may include breaking changes.
 
+## [0.11.0] — 2026-09-03
+
+### Added
+
+- **`engram.benchmarks.tofu` — TOFU unlearning in one call.** The benchmark the paper reports,
+  packaged as library code instead of test scaffolding: `load_splits`, `collect` (answer-token
+  masked target and reference covariances, cacheable), `evaluate` at three levels — `"quick"`
+  (answer-token NLL, seconds), `"utility"` (adds the nine-metric Model Utility, whose harmonic
+  mean collapses if any part does), `"full"` (the paper's composite Overall) — plus `run` for
+  collect → edit → score, and `search` for the best `(alpha, scale)`.
+
+  `search` is coarse-to-fine because the engram is computed **once**: `alpha` only scales the
+  subtraction, so a sweep costs evaluations, not extractions. Every candidate is scored at the
+  quick level and only the top few re-scored at the final level. Its default objective is
+  `Overall` — it contains Utility, so it cannot be won by editing harder, the trap a raw
+  forget-minus-retain score falls into; `"constrained"` (maximize forgetting subject to
+  `utility >= floor * baseline`) and a callable are also accepted. `reference=` takes a
+  `Statistics`, so a self-generated or otherwise custom reference covariance drops straight in.
+
+  Measured on the TOFU Llama-3.2-1B model: `run(level="quick")` collects, edits and scores in
+  75 s with cached statistics; the module's base Model Utility (0.5993) matches the value the
+  official evaluation reports (0.5995).
+
+- `tofu` extra: `pip install ai-engram[tofu]` pulls `datasets`, `scipy`, `rouge-score`.
+
+## [0.10.0] — 2026-09-01
+
+Performance release: nothing about the engram changes — the same covariances, the same
+projections, the same edits — but layers that read the same tensor stop paying for it twice.
+
+### Changed
+
+- **`q`/`k`/`v` and `gate`/`up` share their input covariance.** Each trio reads one LayerNorm
+  output, so their covariances are identical to the last bit (verified on a real model). Two
+  independent savings follow:
+
+  *Collection* — a six-entry window of recent inputs lets a layer reuse the `x^T x` a sibling just
+  computed. Every layer still folds that product into its own accumulator with its own count, so
+  the arithmetic is untouched; only the matrix product is skipped. The window is keyed on tensor
+  identity rather than layer names (so unfamiliar block shapes are covered) and is cleared at the
+  start of every batch — including when no `mask_fn` is given — so a hit can only mean "the layer
+  before me, in this forward, saw this tensor". A loader that refills one preallocated tensor is
+  therefore handled correctly.
+
+  *Everything downstream* — `collect_statistics` finishes with `Statistics.dedupe()`, which
+  collapses covariances that are **already bit-identical** onto one tensor. Merging only what is
+  already equal cannot change a number; it changes how many distinct matrices get stored and
+  decomposed. Measured on Qwen3-0.6B (197 layers → 113 distinct): covariance memory 2.118 → 1.766
+  GB and statistics file 1.060 → 0.883 GB (−16.6%), eigendecompositions 197 → 113, engram
+  computation 4.39 s → 3.43 s (1.28x), collection 0.62 s → 0.56 s. Every covariance, count and
+  projection bit-identical.
+
+  The memory figure is steady state, not peak: collection still allocates one buffer per layer and
+  releases the duplicates at the end. How much storage this saves depends on how much of a model is
+  attention/MLP-input width — ~20% on Qwen3-8B, ~10% on Qwen3-32B, ~16% on Llama-70B.
+
+- **`Statistics.save` stores a shared covariance once**, under on-disk `format=4` with an alias
+  map. Files without aliases keep `format=3`, which ai-engram 0.9.x still reads; an aliased file
+  fails loudly there rather than silently returning a `Statistics` missing the aliased layers.
+  `load` and `to` restore the sharing; `merge` materializes one tensor per key. Because siblings
+  now hold the *same* tensor, a covariance must be treated as read-only — an in-place write into
+  one is a write into all of them.
+
+- **The engram decomposes each distinct covariance once.** A single-entry factor cache is enough,
+  since layers sharing a covariance are consecutive in iteration order — a per-covariance cache
+  would retain one eigenbasis per distinct matrix (~27 GiB on Qwen3-8B at full rank).
+
+### Added
+
+- `tofu` extra (`pip install ai-engram[tofu]`) for the TOFU benchmark dependencies.
+
+## [0.9.0] — 2026-08-31
+
+Performance release: the engram computed an order of magnitude faster and stored in half the
+space, with a result that no longer shifts between runs, solvers or dtypes. The edit itself moves
+by 0.43% on average — see below for what that is and why it is not the algorithm changing.
+
+### Changed
+
+- **The pseudo-inverse is computed from a float64 symmetric eigendecomposition instead of
+  `torch.linalg.pinv`'s SVD.** The covariances are symmetric PSD, so the eigendecomposition and the SVD
+  agree in exact arithmetic; in float32 the two differ where the cut lands, which is why the
+  decomposition now runs in float64 (below). Measured on an H100: **10.6x faster at
+  D=1024, 30x at D=4096, 65.7x at D=18432**, and **11.6x end-to-end** on the TOFU
+  Llama-3.2-1B model (113 layers: 158.5 s → 13.6 s). The projection differs from the old path by
+  0.43% on average, and TOFU unlearning is unchanged within evaluation noise (forget-NLL rise
+  2.030 → 2.023, retain 0.446 → 0.443). `inverse_method="svd"` restores the previous code path.
+- **The singular-value cut no longer follows the dtype.** It was
+  `D * torch.finfo(precision).eps`, which meant switching the covariance to float64 moved the
+  regularization threshold nine orders of magnitude and 1/sigma-amplified pure noise — the
+  algorithm changed with the storage format. The cut is now pinned to `D * eps_float32` as a
+  constant (`engram.inverse.default_rtol`), so float32 and float64 solve the same problem, and
+  the decomposition runs in float64 so that solving it is deterministic: **0 keep-set mismatches
+  and 0.000000 relative difference between eigh and SVD, where float32 disagrees by ~2%**
+  (the eigenvalues nearest the cut carry ~1e-7 float32 error, and their `1/lambda` is ~1/rtol,
+  so a single borderline direction moves the projection by percent). On a per-layer micro-benchmark float64 cost ~14% more than
+  float32; end-to-end the difference was inside run-to-run noise (13.6 s vs 14.3 s for 113
+  layers, float64 the faster of the two).
+- **`Statistics.save` writes the upper triangle only (on-disk `format=3`).** Covariances are
+  symmetric, so this stores `D(D+1)/2` of `D^2` values — just over half in principle,
+  0.500x in practice at D=4096 once file overhead is counted — with the upper triangle
+  preserved bit-for-bit, and 5.92 GB → 2.96 GB for the TOFU Llama-3.2-1B statistics.
+  **Breaking:** older ai-engram versions cannot read `format=3` files; write `format=2` with
+  `save(path, packed=False)`. Reading is backward compatible — 0.9.0 loads both, and still
+  rejects the legacy untagged dict. Entries that are not symmetric within 1e-5 fall back to
+  dense storage inside the same file, so arbitrary contents round-trip exactly.
+- **The projection applies the inverse in factored form**, so the `D x D` inverse is never
+  materialized — 2.6 GB less per layer at `D=25600`.
+
+### Added
+
+- `engram.inverse` — `spectral_factors` / `spectral_pinv` / `default_rtol`, with opt-in cut
+  criteria: `rank_fraction` (keep the top `f*D` directions), `condition_cap` (one condition-number
+  cap for every layer, instead of the width-dependent default), `cut="energy"` (keep a fraction of
+  the trace), `cut="ridge"` (Tikhonov damping instead of truncation, `ridge_delta` relative to
+  `lambda_max`), and
+  `inverse_solver="randomized"` (top-k only, `O(D^2 k)` — worth it below `f ~ 0.1`).
+- `engram.rmt` — Marchenko-Pastur effective rank (`mp_rank`, `mp_rank_fitted`), exposed through
+  `cut="mp"`. Covered by `tests/test_inverse.py::test_mp_rank_recovers_planted_spikes`, which
+  recovers the exact number of planted directions (and reports none for pure noise).
+- All of the above default to **off**: on TOFU, none of the alternative criteria beats the
+  historical cut at matched edit strength, so the shipped behaviour is unchanged.
+
 ## [0.8.0] — 2026-06-16
 
 ### Changed

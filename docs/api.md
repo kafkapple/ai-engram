@@ -70,3 +70,15 @@ See [Guide → Mixture-of-experts](guide.md#mixture-of-experts).
 ::: engram.moe.FusedExpertAdapter
 
 ::: engram.moe.apply_engram_weights
+
+## Benchmarks
+
+::: engram.benchmarks.tofu.run
+
+::: engram.benchmarks.tofu.search
+
+::: engram.benchmarks.tofu.evaluate
+
+::: engram.benchmarks.tofu.collect
+
+::: engram.benchmarks.tofu.Report

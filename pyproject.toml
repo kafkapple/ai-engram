@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ai-engram"
-version = "0.8.0"
+version = "0.11.0"
 description = "Minimal, efficient covariance-based engram extraction for editing HuggingFace LLMs"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -26,6 +26,9 @@ dependencies = [
 dev = ["pytest"]
 docs = ["mkdocs-material", "mkdocstrings[python]", "black"]
 audit = ["datasets", "matplotlib", "numpy", "scikit-learn", "rouge_score"]
+# engram.benchmarks.tofu: datasets for the splits, scipy for the harmonic means and the KS test,
+# rouge-score for ROUGE-L recall. The "full" level additionally downloads a fluency classifier.
+tofu = ["datasets", "scipy", "rouge-score", "numpy"]
 
 # Audit environment pins (uv). Versions mirror the gpu03 env that produced
 # experiments/unlearning_audit/results (environment.gpu03.yml, python 3.11.15).

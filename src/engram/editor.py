@@ -26,6 +26,7 @@ from .config import EditorConfig
 from .handlers import Conv1DHandler, LinearHandler, get_conv1d_class, handler_for
 from .scaling import EngramResult, LayerScaleInfo, ScaleFn, _erank, count_ratio
 from .stats import Statistics
+from .inverse import default_rtol, spectral_factors
 
 logger = logging.getLogger("engram")
 
@@ -165,12 +166,16 @@ class EngramEditor:
             for batch in tqdm(
                 dataloader, disable=None, desc="Collecting covariance"
             ):
+                # Unconditionally, not only when a mask_fn exists: the input-sharing window is
+                # only ever valid inside one forward pass. A loader that refills a preallocated
+                # tensor would otherwise be served the previous batch's product.
+                collector.begin_batch()
                 if mask_fn is not None:
                     collector.set_mask(mask_fn(batch))
                 raw_inputs = batch_fn(batch) if batch_fn else batch[0]
                 self._forward(self._move_to_device(raw_inputs))
 
-        return Statistics(collector.covariance_matrices, collector.sample_counts)
+        return Statistics(collector.covariance_matrices, collector.sample_counts).dedupe()
 
     @staticmethod
     def merge_statistics(*stats: Statistics) -> Statistics:
@@ -184,6 +189,15 @@ class EngramEditor:
         total_covariance: Statistics,
         *,
         compute_erank: bool = False,
+        rank_fraction: Optional[float] = None,
+        inverse_method: str = "eigh",
+        inverse_solver: str = "exact",
+        rank_floor: str = "rtol",
+        inverse_precision: Optional[torch.dtype] = torch.float64,
+        condition_cap: Optional[float] = None,
+        cut: str = "rtol",
+        energy_fraction: float = 0.99,
+        ridge_delta: float = 1e-6,
     ) -> EngramResult:
         """Compute the per-layer engram projection ``P = W . C_target . pinv(C_total)``.
 
@@ -202,6 +216,34 @@ class EngramEditor:
             compute_erank: also compute each layer's target/total effective rank and store
                 them in the result (needed only by :func:`engram.scaling.effective_rank`).
                 Default ``False`` — skips the extra eigendecompositions.
+            rank_fraction: ``None`` (default) keeps the existing singular-value cut
+                (``rtol = D * eps``). A float ``f`` in ``(0, 1]`` switches to a
+                **rank-based** cut: invert only the top ``ceil(f * D)`` eigen-directions
+                of ``C_total`` — a conditioning-independent criterion that needs no
+                ridge/damping (see :mod:`engram.inverse`).
+            inverse_solver: ``"exact"`` (default) runs a full ``eigh``; ``"randomized"``
+                solves only the top ``ceil(rank_fraction * D)`` directions
+                (``O(D^2 k)``) — worth it for aggressive truncation (``f <= 0.1``).
+            cut: which directions to invert — ``"rtol"`` (default, the historical relative
+                singular-value cut), ``"mp"``/``"mp_n"`` (random-matrix noise-bulk edge, see
+                :mod:`engram.rmt`), ``"energy"`` (keep ``energy_fraction`` of the trace), or
+                ``"ridge"`` (no truncation; damp by ``ridge_delta * lambda_max``).
+            condition_cap: impose one condition-number cap on every layer
+                (``rtol = 1 / condition_cap``) instead of the width-dependent default.
+            inverse_precision: dtype the eigendecomposition is solved in — ``torch.float64``
+                by default. Upcasting a float32 covariance is lossless, and it is what makes
+                the truncation deterministic: at float32 the eigenvalues nearest the cut carry
+                ~1e-7 error, so a direction whose ``1/lambda`` is ~1/rtol drifts in and out of
+                the kept set and moves the projection by ~2%. At float64 the keep-set is
+                identical across solvers (measured: 0 mismatches, 0.000000 relative difference)
+                for ~14% more time. Pass ``None`` to solve in the covariance's own dtype.
+            rank_floor: ``"rtol"`` (default) also drops kept directions below
+                ``rtol * lam_max``; ``"none"`` makes ``rank_fraction`` the only cut.
+            inverse_method: ``"eigh"`` (default) computes the pseudo-inverse from the
+                symmetric eigendecomposition — same operator as the SVD-based
+                ``torch.linalg.pinv`` for these symmetric PSD matrices, severalfold
+                faster. ``"svd"`` keeps the previous ``torch.linalg.pinv`` code path
+                (only valid with ``rank_fraction=None``).
 
         Returns:
             An :class:`engram.scaling.EngramResult`: ``layers[name]`` holds the projection
@@ -222,6 +264,9 @@ class EngramEditor:
 
         result = EngramResult()
         modules = dict(self.model.named_modules())
+        # Layers sharing an input share their covariance object, so the eigendecomposition is
+        # computed once per distinct matrix rather than once per layer.
+        factor_cache: Dict[Any, Any] = {}
         dev = self._model_device  # float32 throughout — float64's pinv is catastrophic on
         prec = torch.float32      # ill-conditioned C_total (see CovarianceCollector).
 
@@ -239,8 +284,47 @@ class EngramEditor:
             # 1/sigma-amplifies them -> catastrophic edit). Pin rtol to torch's own default
             # formula (max(M,N) * eps) so this regularization is explicit and independent of
             # any future change to the library's default tolerance. C_total is square (D x D).
-            rtol = c_total.shape[-1] * torch.finfo(prec).eps
-            pinv_total = torch.linalg.pinv(c_total, rtol=rtol)
+            # Dtype-independent cut (engram.inverse.default_rtol): identical to the historical
+            # D * eps_float32 value, but pinned as a constant so precision changes do not change
+            # the operator being solved.
+            rtol = None if condition_cap is not None else default_rtol(c_total.shape[-1])
+            u_k = inv_lam = None
+            if inverse_method not in ("eigh", "svd"):
+                raise ValueError(f"inverse_method must be 'eigh' or 'svd', got {inverse_method!r}")
+            if condition_cap is not None and condition_cap <= 1.0:
+                raise ValueError(f"condition_cap must be > 1, got {condition_cap}")
+            if inverse_method == "svd":
+                if rank_fraction is not None:
+                    raise ValueError("rank_fraction requires inverse_method='eigh'")
+                pinv_total = torch.linalg.pinv(
+                    c_total, rtol=(1.0 / condition_cap if condition_cap else rtol)
+                )
+            else:
+                # factored form: pinv = U_k diag(inv_lam) U_k^T, applied right-to-left so the
+                # D x D inverse is never materialized (identical result, D^2 less memory).
+                # Siblings sharing a covariance are consecutive in iteration order, so a
+                # single-entry cache captures the reuse without retaining one U_k per distinct
+                # covariance — which would pin tens of GB on a large model.
+                ckey = (id(total_covariance[layer_name]), N)   # N only matters for cut="mp_n"
+                cached = factor_cache.get(ckey)
+                if cached is None:
+                    factor_cache.clear()
+                    cached = spectral_factors(
+                        c_total, rank_fraction=rank_fraction, rtol=rtol,
+                        method=inverse_solver, floor=rank_floor,
+                        compute_dtype=inverse_precision, condition_cap=condition_cap,
+                        cut=cut, energy_fraction=energy_fraction, ridge_delta=ridge_delta,
+                        n_samples=N or None,
+                    )
+                    factor_cache[ckey] = cached
+                u_k, inv_lam = cached
+                pinv_total = None
+
+            def _project(w_mat: torch.Tensor) -> torch.Tensor:
+                wc = w_mat @ c_target
+                if pinv_total is not None:
+                    return wc @ pinv_total
+                return ((wc @ u_k) * inv_lam) @ u_k.mT
             er_t = _erank(c_target) if compute_erank else None  # only effective_rank needs these
             er_a = _erank(c_total) if compute_erank else None
 
@@ -253,7 +337,7 @@ class EngramEditor:
                 w = adapter.weight_for(layer_name, self.model)  # [out, in] (a Parameter slice)
                 result.layers[layer_name] = LayerScaleInfo(
                     name=layer_name, weight_fro=float(w.float().norm()),  # scalar; full weight not retained
-                    projection=w.to(dev, dtype=prec) @ c_target @ pinv_total,
+                    projection=_project(w.to(dev, dtype=prec)),
                     n=n, N=N, target_erank=er_t, total_erank=er_a,
                 )
                 continue
@@ -264,7 +348,7 @@ class EngramEditor:
 
             in_dim = handler.get_input_dim(module, absorb_bias=False)
             absorbed = c_total.shape[0] == in_dim + 1 and getattr(module, "bias", None) is not None
-            full = handler.weight_matrix(module, absorb_bias=absorbed).to(dev, dtype=prec) @ c_target @ pinv_total
+            full = _project(handler.weight_matrix(module, absorb_bias=absorbed).to(dev, dtype=prec))
 
             if absorbed:
                 proj = handler.to_weight_shape(full[:, :in_dim], module)
@@ -334,10 +418,13 @@ class EngramEditor:
         scale: Optional[ScaleFn] = None,
         inplace: bool = False,
         compute_erank: bool = False,
+        rank_fraction: Optional[float] = None,
+        inverse_method: str = "eigh",
     ) -> nn.Module:
         """One call: :meth:`compute_engram_weights` then :meth:`apply`; returns the edited model."""
         engram = self.compute_engram_weights(
-            target_covariances, total_covariance, compute_erank=compute_erank
+            target_covariances, total_covariance, compute_erank=compute_erank,
+            rank_fraction=rank_fraction, inverse_method=inverse_method,
         )
         return self.apply(engram, alpha=alpha, scale=scale, inplace=inplace)
 

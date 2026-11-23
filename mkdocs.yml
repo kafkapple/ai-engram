@@ -39,7 +39,7 @@ nav:
   - Quickstart: quickstart.md
   - Guide: guide.md
   - API reference: api.md
-  - TOFU validation: tofu.md
+  - TOFU benchmark: tofu.md
 
 plugins:
   - search

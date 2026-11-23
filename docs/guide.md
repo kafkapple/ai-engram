@@ -150,14 +150,157 @@ W = handler.weight_matrix(module)        # canonical [out, in]
 P = W @ C_target @ pinv(C_total)         # closed form, one pinv per layer (mean covariances)
 ```
 
-- **Pseudo-inverse.** `torch.linalg.pinv` (SVD with rcond thresholding) handles
-  rank-deficient `C_total` directly — small singular values are cut, not inverted.
+- **Pseudo-inverse.** Computed from a **float64 symmetric eigendecomposition** (the covariances
+  are symmetric PSD, so this is the same operator as the SVD — just the right factorization for
+  the matrix). Small eigenvalues are cut, not inverted. See
+  [Inverse and conditioning](#inverse-and-conditioning) for the knobs and why the precision
+  matters.
 - `P` is returned in `module.weight`'s shape as `result.layers[name].projection`,
   with the inputs a scaling function needs (`n`, `N`, the weight). Apply it with
   `editor.apply(result, alpha=…, scale=…)`, or `editor.edit(target, total, …)` to
   compute + apply in one call.
 - A list of target `Statistics` is merged first (count-weighted `merge_statistics`),
   so you can pass per-class statistics.
+
+## Shared inputs
+
+Inside a transformer block, `q`/`k`/`v` all read the post-attention LayerNorm output and
+`gate`/`up` both read the post-MLP one. Their input covariances come out **identical to the last
+bit**, so ai-engram avoids paying for them twice — in two independent places.
+
+**During collection**, a small window of recent inputs lets a layer reuse the `x^T x` a sibling
+just computed. Every layer still folds that product into **its own** accumulator with **its own**
+count, so the arithmetic is exactly what it would be without sharing; only the matrix product is
+skipped. The window is keyed on tensor identity (not layer names, so unfamiliar architectures are
+covered) and is cleared at every batch boundary, so a hit can only ever mean *"the layer before me,
+in this forward, saw this very tensor"*.
+
+**After collection**, `Statistics.dedupe()` collapses covariances that are already bit-identical
+onto one tensor. Because it merges only what is already equal, it cannot change a number; what it
+changes is how many distinct matrices the rest of the pipeline has to store and decompose.
+
+```python
+stats = editor.collect_statistics(loader)     # dedupe runs at the end
+stats["...q_proj"] is stats["...k_proj"]      # True — one tensor, two names
+```
+
+Because they are one object, **treat a covariance as read-only**: an in-place write into one
+layer's matrix writes into its siblings' too. `Statistics.merge(stats)` gives back one tensor per
+key if you need to modify them.
+
+Measured on Qwen3-0.6B (197 layers, 113 distinct groups = 28 blocks × 4 + `lm_head`):
+
+| | separate | shared |
+|---|---:|---:|
+| collection (7680 tokens) | 0.62 s | **0.56 s** |
+| covariance memory, after collection | 2.118 GB | **1.766 GB** |
+| statistics file | 1.060 GB | **0.883 GB** |
+| eigendecompositions | 197 | **113** |
+| engram computation | 4.39 s | **3.43 s** |
+
+Every covariance, count and projection is bit-identical to the unshared path.
+
+Two honest caveats. The memory figure is **steady state, not peak**: collection still allocates one
+buffer per layer, and the duplicates are released when `dedupe` runs, so a VRAM-limited run sees no
+lower high-water mark (that is what `storage_device="cpu"` is for). And how much storage this saves
+depends on how much of a model is attention/MLP-input width rather than MLP-intermediate width —
+16.6% measured here, and by the same accounting ~20% on Qwen3-8B, ~10% on Qwen3-32B, ~16% on
+Llama-70B, where the MLP intermediate dominates.
+
+`save` writes a shared covariance once and records who shares it, under its own format tag so an
+older reader fails loudly instead of silently dropping the aliased layers; `load` and `to` restore
+the sharing. `merge` materializes one tensor per key.
+
+## Inverse and conditioning
+
+`pinv(C_total)` is both the cost centre and the stability centre of the method, so it is worth
+knowing what the defaults do.
+
+### What the cut is for
+
+`C_total` is ill-conditioned: its small eigenvalues are directions the reference corpus barely
+covers, and the inverse weights them by `1/lambda`. Left alone they dominate the edit with
+sampling noise. The cut discards every direction below `rtol · lambda_max`, with
+
+```python
+rtol = engram.inverse.default_rtol(D)   # D * eps_float32, ~4.9e-4 at D=4096
+```
+
+Two things about this number:
+
+- It is **pinned as a constant**, not read from `finfo(dtype).eps`. Before 0.9.0 it followed the
+  covariance's dtype, so moving to float64 dropped the threshold nine orders of magnitude and the
+  inverse amplified pure noise — the *algorithm* changed with the storage format. Now float32 and
+  float64 solve the same problem.
+- It is **width-dependent**: the implied condition cap is `1/(D·eps32)` — 8192 at `D=1024` but
+  328 at `D=25600`, so wider layers are regularized harder. That is inherited from the numerical-
+  rank heuristic the formula comes from. Pass `condition_cap=` to impose one cap on every layer.
+
+### Why float64
+
+The decomposition runs in float64 even when the covariance is stored in float32 (upcasting is
+lossless). At float32 the eigenvalues nearest the cut carry ~1e-7 relative error, and the
+direction that error moves in and out of the kept set has `1/lambda ≈ 1/rtol` — so a *single*
+borderline direction shifts the projection by percent. Measured on Qwen3-0.6B covariances:
+
+| decomposition | eigh vs SVD, same rule | keep-set mismatch |
+|---|---|---|
+| float32 | 2.07% mean, 4.55% max | up to 1 direction |
+| **float64 (default)** | **0.000000** | **0** |
+
+On a per-layer micro-benchmark this costs ~14%; end-to-end over 113 layers the two were
+within run-to-run noise. It buys reproducibility. `inverse_precision=None` solves in the
+covariance's own dtype.
+
+### Knobs
+
+```python
+editor.compute_engram_weights(
+    target, total,
+    inverse_method="eigh",        # "svd" restores the pre-0.9 torch.linalg.pinv path
+    inverse_precision=torch.float64,
+    condition_cap=None,           # e.g. 2048 -> one condition cap for every layer
+    cut="rtol",                   # "mp" | "mp_n" | "energy" | "ridge"
+    rank_fraction=None,           # e.g. 0.25 -> keep only the top quarter of directions
+    inverse_solver="exact",       # "randomized" solves the top-k only, O(D^2 k); needs rank_fraction
+)
+```
+
+The alternatives are opt-in because, measured on TOFU forget10 at matched edit strength, none of
+them beats the default cut: the random-matrix rank (`cut="mp"`, ~0.25·D directions) loses 0.65 net NLL on the adaptive
+condition; `energy` and `ridge` reach a higher raw net only by editing harder — their retain
+damage rises from 0.56 to over 3.1 — so at matched strength they do not lead.
+They are there for cases where you need an explicit condition cap or a cheaper solve.
+
+### Speed
+
+Timed on an H100 — median of 3 runs up to D=8192, single-shot above (an SVD at D=18432
+takes four minutes). Per layer:
+
+| D | `pinv` (SVD) | eigh (float64) | speedup |
+|---:|---:|---:|---:|
+| 1,024 | 0.133 s | 0.013 s | 10.2x |
+| 4,096 | 3.29 s | 0.109 s | 30.0x |
+| 12,288 | 67.4 s | 1.34 s | 50.1x |
+| 18,432 | 239.5 s | 3.64 s | 65.7x |
+
+End-to-end on the TOFU Llama-3.2-1B model (113 layers): **158.5 s → 13.6 s (11.6x)**, with the
+unlearning result unchanged within evaluation noise.
+
+Per model, computed by timing each distinct layer width once and multiplying by the layer counts
+in the model's config (the inverse cost depends only on the input dimension):
+
+| model | layers | `pinv` (SVD) | eigh (float64) | speedup | statistics, dense → packed |
+|---|---:|---:|---:|---:|---:|
+| Qwen3-0.6B | 197 | 39 s | 3.8 s | 10.2x | 1.77 → 0.88 GB |
+| Qwen3-1.7B | 197 | 3.6 min | 14.1 s | 15.3x | 7.06 → 3.53 GB |
+| Llama-3.2-1B | 113 | 4.2 min | 12.9 s | 19.4x | 5.92 → 2.96 GB |
+| Qwen3-8B | 253 | 36.6 min | 88.6 s | 24.8x | 36.3 → 18.2 GB |
+| Qwen3-14B | 281 | 1.9 h | 3.9 min | 29.2x | 73.8 → 36.9 GB |
+| Qwen3-32B | 449 | (> 5 h, not run) | 15.9 min | — | 208 → 104 GB |
+
+The gap widens with width, because the SVD's cost grows faster than the eigendecomposition's in
+practice. At 32B the old path was an overnight job; the new one finishes over a coffee.
 
 ## Scaling
 
@@ -311,6 +454,27 @@ Custom layers: implement `LayerHandler` (`get_input_dim`, `reshape_input`,
       float weight matrix; load in fp16/bf16/fp32.
     - **`Conv2d` / vision models** — planned.
 
+## Saving statistics
+
+`Statistics.save` writes the **upper triangle only** (on-disk `format=3`): covariances are
+symmetric, so it stores `D(D+1)/2` of `D^2` values — just over half in principle, 0.500x in
+practice at `D=4096` — with the upper triangle preserved bit-for-bit and the lower mirrored on
+load. Measured: the TOFU Llama-3.2-1B statistics go
+from 5.92 GB to 2.96 GB.
+
+```python
+stats.save("sigma.pt")                  # format 3 (packed) — the default
+stats.save("sigma.pt", packed=False)    # format 2 (dense) — readable by ai-engram < 0.9
+Statistics.load("sigma.pt")             # reads either; still rejects the legacy untagged dict
+```
+
+Entries that are not symmetric within 1e-5 (relative) are stored dense inside the same file, so
+arbitrary contents round-trip exactly.
+
+!!! warning "Cross-version files"
+    `format=3` files cannot be read by ai-engram < 0.9. Write `packed=False` if the file has to
+    travel to an older install.
+
 ## Efficiency summary
 
 | technique | where | benefit |
@@ -318,7 +482,11 @@ Custom layers: implement `LayerHandler` (`get_input_dim`, `reshape_input`,
 | forward pre-hooks | `CovarianceCollector` | no backward pass |
 | closed-form solve | `compute_engram_weights` | one `pinv` per layer, no training loop |
 | CPU covariance storage | `storage_device` | keeps large `D×D` off the GPU |
-| `float32` throughout | (fixed) | coarse `pinv` cutoff regularizes ill-conditioned `Σ` |
+| `float32` storage, `float64` solve | `inverse_precision` | deterministic keep-set, no measurable end-to-end cost |
+| symmetric eigendecomposition | `inverse_method="eigh"` | 10-66x faster than the SVD `pinv` |
+| factored inverse application | `compute_engram_weights` | the `D×D` inverse is never materialized |
+| packed symmetric statistics | `Statistics.save` | half-size files, upper triangle bit-exact |
+| shared input covariances | collection, storage, inverse | q/k/v and gate/up share one `x^T x`, one stored tensor and one decomposition |
 | `inference_mode` / `no_grad` | both stages | no autograd overhead |
 | selective `target_modules` | collection | edit only what you need (LoRA convention) |
 | answer-token masking | `mask_fn` | covariance over relevant tokens only (any layer, incl. MoE) |

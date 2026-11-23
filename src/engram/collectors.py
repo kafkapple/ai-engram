@@ -21,6 +21,8 @@ import re
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
+from collections import OrderedDict
+
 import torch
 import torch.nn as nn
 
@@ -96,6 +98,8 @@ class CovarianceCollector:
         self.adapters = list(adapters or [])  # opt-in extensions (e.g. fused MoE experts)
         self.covariance_matrices: Dict[str, torch.Tensor] = {}  # per-layer MEAN of x^T x
         self.sample_counts: Dict[str, int] = {}                 # per-layer rows that entered the mean
+        self._recent: "OrderedDict[Any, Any]" = OrderedDict()   # MRU of shared inputs (see _remember)
+        self._shared_hits = 0                                   # x^T x calls skipped by sharing
         self.current_mask: Optional[torch.Tensor] = None
         # per-batch routing-alignment state (used only when a layer sees a subset)
         self._proj: Dict[int, torch.Tensor] = {}                       # H -> random projection [H, _FP_DIM]
@@ -107,6 +111,7 @@ class CovarianceCollector:
     def set_mask(self, mask: Optional[torch.Tensor]) -> None:
         """Set the per-batch token mask and reset routing-alignment state."""
         self.current_mask = mask
+        self.begin_batch()
         self._ref.clear()
         self._routed_mask = None
 
@@ -149,6 +154,30 @@ class CovarianceCollector:
             return self._routed_mask  # 2nd projection of the same expert (no own reference)
         raise ValueError(f"can't align mask: a layer received {n}/{n_full} rows and no reference.")
 
+    _WINDOW = 6  # siblings fire consecutively; a handful of entries is enough
+
+    def begin_batch(self) -> None:
+        """Drop the input-sharing window. Sharing is only ever valid inside one forward pass: a
+        caller that reuses the same batch tensor object across iterations (or re-masks it) must
+        not be served a stale product."""
+        self._recent.clear()
+
+    @property
+    def shared_hits(self) -> int:
+        """How many ``x^T x`` products were skipped because a sibling had already computed one."""
+        return self._shared_hits
+
+    def _remember(self, key, raw, batch, k) -> None:
+        """Bounded MRU of (input tensor, its ``x^T x``, its row count), valid for ONE forward.
+
+        The tensor reference is what makes comparing ``id()`` sound — a freed tensor's address can
+        be reused — and the window is cleared at every batch boundary, so a hit can only ever mean
+        "the layer before me, in this forward, saw this very tensor".
+        """
+        self._recent[key] = (raw, batch, k)
+        while len(self._recent) > self._WINDOW:
+            self._recent.pop(next(iter(self._recent)))
+
     def __enter__(self) -> "CovarianceCollector":
         # storage_device=None (default) follows the model's device: fastest, since
         # each batch's D×D is accumulated in place with no GPU->CPU transfer. Set
@@ -185,17 +214,34 @@ class CovarianceCollector:
 
             def make_hook(layer_name: str, layer_handler: LayerHandler, absorb_bias: bool):
                 def hook(mod: nn.Module, inputs: Any) -> None:
-                    x = layer_handler.reshape_input(mod, inputs, absorb_bias=absorb_bias).to(
-                        torch.float32
-                    )
-                    sel = self._select(x)
-                    if sel is not None:
-                        x = x[sel]
-                    k = x.shape[0]
-                    if k == 0:
-                        return
-                    # incremental mean: C := (N*C + sum(x^T x)) / (N + k), magnitude-bounded
-                    batch = (x.mT @ x).to(self._storage_device)
+                    # Siblings fed by the same tensor (q/k/v off one LayerNorm, gate/up off the
+                    # other) have *identical* input covariances. They also fire consecutively, so
+                    # a tiny window of recent inputs is enough to recognize the repeat and skip
+                    # the x^T x — the dominant cost of collection. The window holds strong
+                    # references, which is what makes id() safe to compare on (a freed tensor's
+                    # address can be reused); it is bounded, so the memory it pins is too.
+                    raw = inputs[0] if isinstance(inputs, tuple) else inputs
+                    key = (id(raw), layer_handler.__class__, absorb_bias)
+                    hit = self._recent.get(key)
+                    if hit is not None:
+                        # Same tensor, same handler, same absorption -> the same x^T x. Reuse the
+                        # product; every layer still folds it into its OWN accumulator with its
+                        # own count, so the arithmetic is identical to computing it again.
+                        batch, k = hit[1], hit[2]
+                        self._shared_hits += 1
+                    else:
+                        x = layer_handler.reshape_input(mod, inputs, absorb_bias=absorb_bias).to(
+                            torch.float32
+                        )
+                        sel = self._select(x)
+                        if sel is not None:
+                            x = x[sel]
+                        k = x.shape[0]
+                        if k == 0:
+                            return
+                        # incremental mean: C := (N*C + sum(x^T x)) / (N + k), magnitude-bounded
+                        batch = (x.mT @ x).to(self._storage_device)
+                        self._remember(key, raw, batch, k)
                     n = self.sample_counts[layer_name]
                     cov = self.covariance_matrices[layer_name]
                     cov.add_((batch - k * cov) / (n + k))
@@ -227,6 +273,7 @@ class CovarianceCollector:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self._recent.clear()   # drop the references the sharing window pins
         for adapter in self.adapters:
             adapter.detach()
         for h in self._hook_handles:
